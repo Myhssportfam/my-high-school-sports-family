@@ -1,0 +1,10 @@
+node_modules
+.next
+out
+.env.local
+dist
+coverage
+/.idea
+/.vscode
+
+.env.local

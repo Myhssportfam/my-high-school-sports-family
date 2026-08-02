@@ -1,0 +1,2 @@
+import Link from 'next/link'
+export default function AthletesPage(){return <div className="site-shell section-space"><div className="section-kicker">Athlete Directory</div><h1 className="mt-3 text-4xl font-black">Find athletes and follow their journey.</h1><p className="mt-4 max-w-2xl text-lg text-slate-600 dark:text-slate-300">Search, filters, featured athletes, verified profiles, highlights, and recruiting information are the next part of this directory.</p><Link href="/signup" className="primary-button mt-8">Create Your Profile</Link></div>}

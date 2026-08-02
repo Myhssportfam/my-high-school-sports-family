@@ -1,0 +1,1 @@
+export default function Page(){return <div className="site-shell section-space"><div className="section-kicker">My High School Sports Family</div><h1 className="mt-3 text-4xl font-black">Terms of Use</h1><p className="mt-4 max-w-2xl text-lg text-slate-600 dark:text-slate-300">This page is ready for your official terms of use content before public launch.</p></div>}

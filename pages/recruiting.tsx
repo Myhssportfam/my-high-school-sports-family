@@ -1,0 +1,2 @@
+import Link from 'next/link'
+export default function RecruitingPage(){return <div className="site-shell section-space"><div className="section-kicker">MHSF Recruiting</div><h1 className="mt-3 text-4xl font-black">Turn your story into an opportunity.</h1><p className="mt-4 max-w-2xl text-lg text-slate-600 dark:text-slate-300">Athlete highlights, stats, academics, measurables, offers, and coach discovery will live here.</p><Link href="/profile" className="primary-button mt-8">Build Recruiting Profile</Link></div>}

@@ -1,0 +1,43 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owns(userId) { return signedIn() && request.auth.uid == userId; }
+    function validPost() {
+      return request.resource.data.authorId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.media is list
+        && request.resource.data.media.size() <= 4;
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if owns(userId);
+      allow delete: if false;
+      match /followers/{followerId} { allow read: if true; allow write: if owns(followerId); }
+      match /following/{followId} { allow read: if true; allow write: if owns(userId); }
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if signedIn() && validPost();
+      allow update: if signedIn() && (resource.data.authorId == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount','commentsCount','reshareCount']));
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.authorId == request.auth.uid && request.resource.data.text is string && request.resource.data.text.size() <= 500;
+        allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      }
+      match /likes/{userId} { allow read: if true; allow write: if owns(userId); }
+    }
+
+    match /userLikes/{userId}/likes/{postId} { allow read, write: if owns(userId); }
+    match /userSaves/{userId}/saves/{postId} { allow read, write: if owns(userId); }
+    match /notifications/{userId}/items/{notificationId} {
+      allow read, update, delete: if owns(userId);
+      allow create: if signedIn();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

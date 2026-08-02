@@ -1,0 +1,43 @@
+{
+  "name": "mhsf",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "server": "node server/index.js",
+    "backfill:followers": "node server/backfill_followers.js",
+    "verify:admin": "node server/verify_admin.js",
+    "enable:firestore": "node server/enable_firestore_api.js"
+  },
+  "dependencies": {
+    "autoprefixer": "10.4.14",
+    "axios": "1.5.0",
+    "clsx": "1.2.1",
+    "firebase": "10.11.0",
+    "firebase-admin": "^11.11.0",
+    "next": "14.2.0",
+    "next-themes": "0.2.1",
+    "postcss": "8.4.24",
+    "react": "18.3.0",
+    "react-dom": "18.3.0",
+    "react-simple-maps": "^3.0.0",
+    "swr": "2.3.0",
+    "tailwindcss": "3.4.8"
+  },
+  "serverDependencies": {
+    "express": "4.18.2",
+    "cors": "2.8.5",
+    "body-parser": "1.20.2",
+    "node-fetch": "2.6.7",
+    "firebase-admin": "11.11.0"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.17",
+    "eslint": "8.49.0",
+    "eslint-config-next": "14.2.0",
+    "typescript": "5.8.2"
+  }
+}
