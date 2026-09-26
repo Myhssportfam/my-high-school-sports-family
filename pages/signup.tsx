@@ -17,7 +17,7 @@ export default function SignUp() {
     setError(null)
     try {
       await signUpWithEmail({ email, password, displayName, role })
-      router.push('/profile')
+      router.push('/choose-state')
     } catch (err: any) {
       setError(err.message || 'Signup failed')
     } finally {
@@ -30,7 +30,7 @@ export default function SignUp() {
     setError(null)
     try {
       await signInWithGoogle()
-      router.push('/profile')
+      router.push('/choose-state')
     } catch (err: any) {
       setError(err.message || 'Google sign in failed')
     } finally {
