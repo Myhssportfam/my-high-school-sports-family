@@ -4,7 +4,7 @@ type MediaEditorProps = {
   mediaUrl: string
   mediaType: 'Photo' | 'Video'
   onCancel: () => void
-  onSave: () => void
+  onSave?: () => void
   onNext: () => void
 }
 const musicTracks = [
@@ -13,7 +13,7 @@ const musicTracks = [
     name: 'Stadium Energy',
     artist: 'MHSSF Originals',
     category: 'Football Hype',
-    audioUrl: '/music/stadium-energy.wav',
+    audioUrl: '/music/stadium-energy.m4a',
   },
   {
     id: 'victory-lap',
