@@ -1,7 +1,15 @@
 import { useEffect, useState} from 'react'
 import { useRouter } from 'next/router'
 import { athletes } from '../../../lib/athletes'
+import ProfileConnections from "../../../components/ProfileConnections";
+import SportsIdentity from "../../../components/SportsIdentity";
+import SportsTimeline from "../../../components/SportsTimeline";
+import SportsPassport from "../../../components/SportsPassport";
+import { doc, onSnapshot } from "firebase/firestore";
+import AthleteAccomplishments from "../../../components/AthleteAccomplishments";
+import { db } from "../../../lib/firebase";
 
+import type { UserProfile } from "../../../types/user";
 export default function AthleteProfilePage() {
   const router = useRouter()
 const [isFollowing, setIsFollowing] = useState(false)
@@ -9,10 +17,57 @@ const [followers, setFollowers] = useState(248)
 const [messageOpen, setMessageOpen] = useState(false)
 const [messageText, setMessageText] = useState('')
 const [messageSent, setMessageSent] = useState(false)
+
+const [profileImage, setProfileImage] = useState<string>("");
+const [profileVideo, setProfileVideo] = useState<string>("");
+const [liveProfile, setLiveProfile] = useState<UserProfile | null>(null);
+const handleProfileImage = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  const imageUrl = URL.createObjectURL(file)
+  setProfileImage(imageUrl)
+}
+const handleProfileVideo = (
+  event: React.ChangeEvent<HTMLInputElement>
+) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+  const videoUrl = URL.createObjectURL(file)
+  setProfileVideo(videoUrl)
+}
   const athleteId =
     typeof router.query.athleteId === 'string'
       ? router.query.athleteId
       : ''
+      useEffect(() => {
+  if (!router.isReady || !athleteId || !db) return;
+
+  const profileRef = doc(db, "users", athleteId);
+
+  const unsubscribe = onSnapshot(
+    profileRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        setLiveProfile({
+          id: snapshot.id,
+          ...(snapshot.data() as Omit<UserProfile, "id">),
+        });
+      } else {
+        setLiveProfile(null);
+      }
+    },
+    (error) => {
+      console.error("Failed to load live athlete profile:", error);
+      setLiveProfile(null);
+    }
+  );
+
+  return () => unsubscribe();
+}, [router.isReady, athleteId]);
+    
 useEffect(() => {
   if (!router.isReady || !athleteId) return
 
@@ -47,6 +102,21 @@ useEffect(() => {
   }
 
   if (!athlete) {
+    const handleProfileImage = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const imageUrl = URL.createObjectURL(file);
+  setProfileImage(imageUrl);
+};
+
+const handleProfileVideo = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  const videoUrl = URL.createObjectURL(file);
+  setProfileVideo(videoUrl);
+};
     return (
       <main className="min-h-screen bg-slate-50">
         <div className="mx-auto max-w-3xl px-4 py-20 text-center">
@@ -91,10 +161,49 @@ useEffect(() => {
 
           <div className="grid gap-8 lg:grid-cols-[1fr_340px]">
             <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
-              <div className="flex h-32 w-32 shrink-0 items-center justify-center rounded-3xl border-4 border-white/20 bg-red-600 text-4xl font-black shadow-2xl">
-                {initials}
-              </div>
+             <div className="relative flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-full bg-slate-800 text-3xl font-black text-white">
+  {liveProfile?.avatarUrl || profileImage ? (
+  <img
+    src={liveProfile?.avatarUrl || profileImage}
+    alt={fullName}
+    className="h-full w-full object-cover"
+  />
+) : (
+  <span>{initials}</span>
+)}
+</div>
+<div className="mt-4 flex flex-wrap gap-3">
+  <label className="cursor-pointer rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-900 shadow-sm">
+    Add Profile Picture
+    <input
+      type="file"
+      accept="image/*"
+      onChange={handleProfileImage}
+      className="hidden"
+    />
+  </label>
 
+  <label className="cursor-pointer rounded-xl bg-white px-4 py-2 text-sm font-bold text-slate-900 shadow-sm">
+    Add Profile Video
+    <input
+      type="file"
+      accept="video/*"
+      onChange={handleProfileVideo}
+      className="hidden"
+    />
+  </label>
+</div>
+
+{profileVideo && (
+  <div className="mt-4 overflow-hidden rounded-2xl">
+    <video
+      src={profileVideo}
+      controls
+      playsInline
+      className="w-full max-w-xl rounded-2xl"
+    />
+  </div>
+)}
               <div>
                 <p className="text-sm font-bold uppercase tracking-[0.2em] text-red-300">
                   My High School Sports Family
@@ -197,10 +306,77 @@ useEffect(() => {
           </div>
         </div>
       </section>
+<div className="mx-auto max-w-7xl px-4 pt-8 sm:px-6 lg:px-8">
+  <div className="space-y-6">
+    <SportsPassport
+  name={
+    liveProfile?.displayName ||
+    `${athlete.firstName} ${athlete.lastName}`
+  }
+  avatarUrl={liveProfile?.avatarUrl}
+  sport={
+    (liveProfile?.sports || [])[0] ||
+    athlete.sport ||
+    ""
+  }
+  role={
+    liveProfile?.activityRole ||
+    liveProfile?.role ||
+    "Athlete"
+  }
+  position={
+    liveProfile?.position ||
+    athlete.position
+  }
+  state={
+    liveProfile?.state ||
+    athlete.stateId ||
+    ""
+  }
+  classYear={
+    liveProfile?.gradYear !== undefined
+      ? String(liveProfile.gradYear)
+      : athlete.graduationYear
+        ? String(athlete.graduationYear)
+        : undefined
+  }
+  followers={followers}
+  achievements={liveProfile?.achievements || []}
+  verified={liveProfile?.verified || false}
+/>
+  
+    <SportsIdentity
+  initialActivity={
+    (liveProfile?.sports || [])[0] ||
+    athlete.sport ||
+    ""
+  }
+  initialRole={
+    liveProfile?.activityRole ||
+    liveProfile?.role ||
+    "Athlete"
+  }
+/>
 
+<SportsTimeline
+  initialTimeline={
+    liveProfile?.sportsTimeline?.length
+      ? liveProfile.sportsTimeline.map((stage) => ({
+          ...stage,
+          subtitle: stage.subtitle || "",
+          icon: stage.icon || "🏆",
+        }))
+      : undefined
+  }
+/>
+  </div>
+</div>
       <div className="mx-auto grid max-w-7xl gap-8 px-4 py-10 sm:px-6 lg:grid-cols-[1fr_340px] lg:px-8">
         <div className="space-y-8">
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+
+  <ProfileConnections stateId={athlete.stateId} />
+
+  <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <p className="text-sm font-bold uppercase tracking-wider text-red-600">
               Athlete overview
             </p>
@@ -209,14 +385,37 @@ useEffect(() => {
               About {athlete.firstName}
             </h2>
 
-            <p className="mt-4 leading-7 text-slate-600">
-              {fullName} is a {athlete.sport} athlete from {athlete.city},{' '}
-              {athlete.stateId}. {athlete.firstName} plays{' '}
-              {athlete.position} for {athlete.school} and is part of the
-              graduating class of {athlete.graduationYear}.
-            </p>
-          </section>
+           <p className="mt-4 leading-7 text-slate-600">
+  {liveProfile?.displayName ||
+    `${athlete.firstName} ${athlete.lastName}`}{" "}
+  is a{" "}
+  {(liveProfile?.sports || [])[0] || athlete.sport || "sports"} athlete
+  {(liveProfile?.city || athlete.city) &&
+    ` from ${liveProfile?.city || athlete.city}`}
+  {(liveProfile?.state || athlete.stateId) &&
+    `, ${liveProfile?.state || athlete.stateId}`}.
+  {(liveProfile?.position || athlete.position) && (
+    <>
+      {" "}Plays {liveProfile?.position || athlete.position}
+    </>
+  )}
+  {(liveProfile?.schoolId || athlete.school) && (
+    <>
+      {" "}for {liveProfile?.schoolId || athlete.school}.
+    </>
+  )}
+</p>
 
+{liveProfile?.bio && (
+  <p className="mt-4 leading-7 text-slate-600">
+    {liveProfile.bio}
+  </p>
+)}
+          </section>
+<AthleteAccomplishments
+  athleteId={athleteId as string}
+  accomplishments={liveProfile?.accomplishments || []}
+/>
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-end justify-between gap-4">
               <div>
@@ -249,7 +448,7 @@ useEffect(() => {
                   Position
                 </p>
                 <p className="mt-2 text-xl font-black">
-                  {athlete.position}
+                  {liveProfile?.position || athlete.position || "—"}
                 </p>
               </div>
 
@@ -295,6 +494,36 @@ useEffect(() => {
 
             <h2 className="mt-2 text-2xl font-black">
               Posts and updates
+              <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-5">
+  <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+    🎵 Profile Music
+  </p>
+
+  {liveProfile?.profileSongUrl ? (
+    <div className="mt-3">
+      <p className="font-bold text-slate-900">
+        {liveProfile.profileSongTitle || "Profile Song"}
+      </p>
+
+      {liveProfile.profileSongArtist && (
+        <p className="mt-1 text-sm text-slate-500">
+          {liveProfile.profileSongArtist}
+        </p>
+      )}
+
+      <audio
+        controls
+        preload="metadata"
+        src={liveProfile.profileSongUrl}
+        className="mt-3 w-full"
+      />
+    </div>
+  ) : (
+    <p className="mt-2 text-sm text-slate-500">
+      No song added
+    </p>
+  )}
+</div>
             </h2>
 
             <div className="mt-6 rounded-2xl bg-slate-50 p-6">
@@ -339,14 +568,18 @@ useEffect(() => {
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
                   Sport
                 </p>
-                <p className="mt-1 font-bold">{athlete.sport}</p>
+                <p className="mt-1 font-bold">
+  {(liveProfile?.sports || [])[0] || athlete.sport || "—"}
+</p>
               </div>
 
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-400">
                   Position
                 </p>
-                <p className="mt-1 font-bold">{athlete.position}</p>
+                <p className="mt-1 font-bold">
+  {liveProfile?.position || athlete.position || "—"}
+</p>
               </div>
 
               <div>

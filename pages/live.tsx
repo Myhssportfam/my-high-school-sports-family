@@ -1,7 +1,31 @@
+import { useRouter } from "next/router";
 import Head from 'next/head'
 import Link from 'next/link'
-import { FormEvent, useMemo, useState } from 'react'
+import {
+  FormEvent,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import {
+  addDoc,
+  collection,
+  onSnapshot,
+  orderBy,
+  query,
+  serverTimestamp,
+  doc,
+updateDoc,
+getDocs,
+getDoc,
+setDoc,
+where,
+deleteDoc,
+} from "firebase/firestore";
 
+import { auth, db } from "../lib/firebase";
+import { useAuth } from "../hooks/useAuth";
+import { useUserProfile } from "../hooks/useUserProfile";
 type StreamStatus = 'live' | 'scheduled' | 'replay'
 
 type Stream = {
@@ -9,13 +33,29 @@ type Stream = {
   title: string
   broadcaster: string
   school: string
+  schoolId?: string
   sport: string
+  athleteIds?: string[]
+opponent?: string
+date?: string
+  state?: string
+  stateId?: string
   matchup: string
   status: StreamStatus
   viewers?: number
   scheduledTime?: string
+  scheduledDate?: string
   duration?: string
   platform: string
+createdBy?: string;
+streamUrl?: string;
+createdAt?: unknown;
+ownerId?: string
+homeTeam?: string;
+awayTeam?: string;
+homeScore?: number;
+awayScore?: number;
+gameClock?: string;
 }
 
 const startingStreams: Stream[] = [
@@ -25,6 +65,8 @@ const startingStreams: Stream[] = [
     broadcaster: 'Jordan Hill',
     school: 'Texas High School',
     sport: 'Baseball',
+    state: 'Texas',
+stateId: 'texas',
     matchup: 'Texas Tigers vs. Liberty Eagles',
     status: 'live',
     viewers: 1248,
@@ -36,6 +78,8 @@ const startingStreams: Stream[] = [
     broadcaster: 'MHSSF Sports Network',
     school: 'North Dallas High School',
     sport: 'Football',
+    state: 'Texas',
+stateId: 'texas',
     matchup: 'North Dallas vs. Southlake',
     status: 'scheduled',
     scheduledTime: 'Friday at 7:30 PM',
@@ -47,6 +91,8 @@ const startingStreams: Stream[] = [
     broadcaster: 'Central High Athletics',
     school: 'Central High School',
     sport: 'Basketball',
+    state: 'National',
+stateId: 'national',
     matchup: 'Central Panthers vs. Westview',
     status: 'scheduled',
     scheduledTime: 'Saturday at 5:00 PM',
@@ -58,6 +104,8 @@ const startingStreams: Stream[] = [
     broadcaster: 'MHSSF Replay Center',
     school: 'State Championship',
     sport: 'Football',
+    state: 'Texas',
+stateId: 'texas',
     matchup: 'Texas Championship Final',
     status: 'replay',
     duration: '2:14:38',
@@ -71,24 +119,312 @@ function formatViewerCount(viewers = 0) {
     maximumFractionDigits: 1,
   }).format(viewers)
 }
-
+const STATE_NAMES: Record<string, string> = {
+  al: "Alabama",
+  ak: "Alaska",
+  az: "Arizona",
+  ar: "Arkansas",
+  ca: "California",
+  co: "Colorado",
+  ct: "Connecticut",
+  de: "Delaware",
+  fl: "Florida",
+  ga: "Georgia",
+  hi: "Hawaii",
+  id: "Idaho",
+  il: "Illinois",
+  in: "Indiana",
+  ia: "Iowa",
+  ks: "Kansas",
+  ky: "Kentucky",
+  la: "Louisiana",
+  me: "Maine",
+  md: "Maryland",
+  ma: "Massachusetts",
+  mi: "Michigan",
+  mn: "Minnesota",
+  ms: "Mississippi",
+  mo: "Missouri",
+  mt: "Montana",
+  ne: "Nebraska",
+  nv: "Nevada",
+  nh: "New Hampshire",
+  nj: "New Jersey",
+  nm: "New Mexico",
+  ny: "New York",
+  nc: "North Carolina",
+  nd: "North Dakota",
+  oh: "Ohio",
+  ok: "Oklahoma",
+  or: "Oregon",
+  pa: "Pennsylvania",
+  ri: "Rhode Island",
+  sc: "South Carolina",
+  sd: "South Dakota",
+  tn: "Tennessee",
+  tx: "Texas",
+  ut: "Utah",
+  vt: "Vermont",
+  va: "Virginia",
+  wa: "Washington",
+  wv: "West Virginia",
+  wi: "Wisconsin",
+  wy: "Wyoming",
+};
 export default function LivePage() {
+const router = useRouter();
+const { user } = useAuth()
+const { profile } = useUserProfile(user?.uid)
+const [athleteSearch, setAthleteSearch] = useState("");
+const [isFollowingFeatured, setIsFollowingFeatured] = useState(false);
+const [athleteResults, setAthleteResults] = useState<any[]>([]);
+const [selectedAthleteIds, setSelectedAthleteIds] = useState<string[]>([]);
+
+const queryState =
+  typeof router.query.state === "string"
+    ? router.query.state
+    : "";
+const queryStateId =
+  typeof router.query.stateId === "string"
+    ? router.query.stateId
+    : ""
+
+const connectedState = profile?.state || queryState
+const connectedStateId = profile?.stateId || queryStateId
+
   const [activeTab, setActiveTab] = useState<
     'all' | 'live' | 'scheduled' | 'replay'
   >('all')
   const [isFormOpen, setIsFormOpen] = useState(false)
-  const [streams, setStreams] = useState(startingStreams)
+const [streams, setStreams] = useState<Stream[]>([]);
+const [streamsLoading, setStreamsLoading] = useState(true);
+const [submitLoading, setSubmitLoading] = useState(false);
   const [successMessage, setSuccessMessage] = useState('')
+  
 
-  const filteredStreams = useMemo(() => {
-    if (activeTab === 'all') {
-      return streams
-    }
+const stateFilter =
+  typeof router.query.state === "string"
+    ? router.query.state.toLowerCase()
+    : "";
+    const goToStatePage = (path: string) => {
+  if (stateFilter) {
+    router.push(`${path}?state=${encodeURIComponent(stateFilter)}`);
+    return;
+  }
 
-    return streams.filter((stream) => stream.status === activeTab)
-  }, [activeTab, streams])
+  router.push(path);
+};
+const goToCommunity = () => {
+  if (!stateFilter) return;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  router.push(`/states/${stateFilter}`);
+};
+  const selectedStateName =
+  STATE_NAMES[stateFilter] ||
+  connectedState ||
+  "state";
+    const filteredStreams = useMemo(() => {
+  let stateFilteredStreams = streams;
+
+  // 1. A state coming from the homepage map takes priority.
+  // Example: /live?state=co
+  if (stateFilter) {
+    stateFilteredStreams = streams.filter((stream) => {
+      const streamState = (stream.state || "").toLowerCase();
+      const streamStateId = (stream.stateId || "").toLowerCase();
+
+      const isNational =
+  streamState === "national" ||
+  streamStateId === "national";
+
+return (
+  isNational ||
+  streamState === stateFilter ||
+  streamStateId === stateFilter
+);
+    });
+  }
+
+  // 2. If there is no map state in the URL,
+  // preserve the user's connected-state filtering.
+  else if (connectedState || connectedStateId) {
+    stateFilteredStreams = streams.filter((stream) => {
+      const isNational =
+        stream.state?.toLowerCase() === "national" ||
+        stream.stateId?.toLowerCase() === "national";
+
+      if (isNational) return true;
+
+      const matchesState =
+        connectedState &&
+        stream.state?.toLowerCase() === connectedState.toLowerCase();
+
+      const matchesStateId =
+        connectedStateId &&
+        stream.stateId?.toLowerCase() === connectedStateId.toLowerCase();
+
+      return Boolean(matchesState || matchesStateId);
+    });
+  }
+const statusPriority: Record<StreamStatus, number> = {
+  live: 0,
+  scheduled: 1,
+  replay: 2,
+}
+
+stateFilteredStreams = [...stateFilteredStreams].sort((a, b) => {
+  const statusDifference =
+    statusPriority[a.status] - statusPriority[b.status]
+
+  if (statusDifference !== 0) {
+    return statusDifference
+  }
+
+  if (a.status === "scheduled" && b.status === "scheduled") {
+    const aTime = a.scheduledDate
+      ? new Date(a.scheduledDate).getTime()
+      : Number.MAX_SAFE_INTEGER
+
+    const bTime = b.scheduledDate
+      ? new Date(b.scheduledDate).getTime()
+      : Number.MAX_SAFE_INTEGER
+
+    return aTime - bTime
+  }
+
+  return 0
+})
+  // 3. Keep your All / Live / Scheduled / Replay tabs working.
+  if (activeTab === "all") {
+    return stateFilteredStreams;
+  }
+
+  return stateFilteredStreams.filter(
+    (stream) => stream.status === activeTab
+  );
+}, [
+  streams,
+  stateFilter,
+  connectedState,
+  connectedStateId,
+  activeTab,
+]);
+const featuredStream = useMemo(() => {
+  return (
+    streams.find((stream) => stream.status === "live") ??
+    streams[0] ??
+    null
+  );
+}, [streams]);
+const liveNowCount = streams.filter(
+  (stream) => stream.status === "live"
+).length
+
+const watchingNow = streams
+  .filter((stream) => stream.status === "live")
+  .reduce((total, stream) => total + (stream.viewers || 0), 0)
+
+const gamesTodayCount = streams.filter((stream) => {
+  if (!stream.scheduledDate) return false
+
+  const streamDate = new Date(stream.scheduledDate)
+  const today = new Date()
+
+  return (
+    streamDate.getFullYear() === today.getFullYear() &&
+    streamDate.getMonth() === today.getMonth() &&
+    streamDate.getDate() === today.getDate()
+  )
+}).length
+useEffect(() => {
+  if (!user?.uid || !featuredStream?.id) {
+    setIsFollowingFeatured(false);
+    return;
+  }
+
+  const userId = user.uid;
+  const streamId = featuredStream.id;
+
+  async function checkFollowStatus() {
+    const followRef = doc(
+      db,
+      "users",
+      userId,
+      "followedBroadcasts",
+      streamId
+    );
+
+    const followSnap = await getDoc(followRef);
+
+    setIsFollowingFeatured(followSnap.exists());
+  }
+
+  checkFollowStatus();
+}, [user?.uid, featuredStream?.id]);
+useEffect(() => {
+  const q = query(
+    collection(db, "liveStreams"),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const liveStreams: Stream[] = snapshot.docs.map((doc) => {
+  const data = doc.data() as Omit<Stream, "id">;
+
+  return {
+    ...data,
+    id: doc.id,
+  };
+});
+
+    setStreams(liveStreams);
+    setStreamsLoading(false);
+  });
+
+  return () => unsubscribe();
+}, []);
+
+async function searchAthletes() {
+  const searchTerm = athleteSearch.trim()
+
+  if (!searchTerm) {
+    setAthleteResults([])
+    return
+  }
+
+  try {
+    const usersRef = collection(db, "users")
+
+    const snapshot = await getDocs(usersRef)
+
+    const matches = snapshot.docs
+      .map((docSnap) => ({
+        id: docSnap.id,
+        ...docSnap.data(),
+      }))
+      .filter((athlete: any) => {
+        const name = athlete.displayName?.toLowerCase() || ""
+        const school = athlete.schoolId?.toLowerCase() || ""
+        const sport = Array.isArray(athlete.sports)
+          ? athlete.sports.join(" ").toLowerCase()
+          : String(athlete.sports || "").toLowerCase()
+
+        const term = searchTerm.toLowerCase()
+
+        return (
+          name.includes(term) ||
+          school.includes(term) ||
+          sport.includes(term)
+        )
+      })
+      .slice(0, 10)
+
+    setAthleteResults(matches)
+  } catch (error) {
+    console.error("Failed to search athletes:", error)
+  }
+}
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
     const form = new FormData(event.currentTarget)
@@ -97,33 +433,348 @@ export default function LivePage() {
     const school = String(form.get('school') || '').trim()
     const sport = String(form.get('sport') || '').trim()
     const opponent = String(form.get('opponent') || '').trim()
+    const awayTeam = String(form.get("awayTeam") || "").trim()
+const homeTeam = String(form.get("homeTeam") || "").trim()
+
+const awayScore = Number(form.get("awayScore") || 0)
+const homeScore = Number(form.get("homeScore") || 0)
+
+const gameClock = String(form.get("gameClock") || "").trim()
     const scheduledTime = String(form.get('scheduledTime') || '').trim()
     const platform = String(form.get('platform') || '').trim()
-
+const streamUrl = String(form.get("streamUrl") || "").trim()
     if (!title || !broadcaster || !school || !sport) {
       return
     }
 
     const newStream: Stream = {
       id: `stream-${Date.now()}`,
+      ownerId: user?.uid || "",
+createdBy: user?.uid || "",
       title,
       broadcaster,
       school,
+      schoolId: profile?.schoolId || "",
       sport,
+      streamUrl,
+      awayTeam,
+homeTeam,
+awayScore,
+homeScore,
+gameClock,
+      state: connectedState || "",
+stateId: connectedStateId || "",
       matchup: opponent ? `${school} vs. ${opponent}` : school,
       status: 'scheduled',
       scheduledTime: scheduledTime || 'Time to be announced',
+      scheduledDate: scheduledTime
+  ? new Date(scheduledTime).toISOString()
+  : "",
       platform: platform || 'External stream',
     }
+if (user?.uid && profile?.state) {
+  const displayName =
+    profile.displayName ||
+    user.displayName ||
+    user.email?.split('@')[0] ||
+    broadcaster ||
+    'Sports Family Member'
 
-    setStreams((current) => [newStream, ...current])
-    setSuccessMessage(
-      'Your stream was added to the schedule. Firebase publishing comes next.',
+  const initials = displayName
+    .split(' ')
+    .map((name) => name.charAt(0))
+    .join('')
+    .slice(0, 2)
+    .toUpperCase()
+
+  const stateFeedId = connectedState
+  .toLowerCase()
+  .replace(/\s+/g, '-')
+
+  try {
+    await addDoc(
+      collection(
+        db,
+        'stateFeeds',
+        stateFeedId,
+        'posts'
+      ),
+      {
+        authorId: user.uid,
+        author: displayName,
+        initials,
+        photoURL:
+          profile.avatarUrl ||
+          user.photoURL ||
+          '',
+        role: `📺 Live Activity • ${connectedState}`,
+        message: `${displayName} scheduled "${newStream.title}" for ${newStream.scheduledTime}.`,
+        type: 'Update',
+        createdAt: 'Just now',
+        createdAtMs: Date.now(),
+        likes: 0,
+        likedBy: [],
+        comments: [],
+        mediaUrl: '',
+        activityType: 'live_scheduled',
+        streamId: newStream.id,
+      }
     )
-    setIsFormOpen(false)
-    event.currentTarget.reset()
+  } catch (error) {
+    console.error(
+      'Scheduled live activity could not be posted:',
+      error
+    )
+  }
+}
+    
+    try {
+  setSubmitLoading(true);
+const streamToSave = {
+  ...newStream,
+  athleteIds: selectedAthleteIds,
+}
+ const streamRef = await addDoc(collection(db, "liveStreams"), {
+  ...streamToSave,
+  createdAt: serverTimestamp(),
+})
+if (selectedAthleteIds.length > 0) {
+  await addLiveEventToAthleteProfiles(
+    selectedAthleteIds,
+    {
+      id: streamRef.id,
+      title: newStream.title || "Live Game",
+      sport: newStream.sport || "",
+      date: new Date().toISOString(),
+      streamUrl: `/live?stream=${streamRef.id}`,
+      result: "",
+    }
+  )
+}
+  setSuccessMessage("Your stream was added to the live schedule.");
+  setIsFormOpen(false);
+  event.currentTarget.reset();
+} catch (error) {
+  console.error("Stream publishing error:", error);
+  setSuccessMessage("The stream could not be published.");
+} finally {
+  setSubmitLoading(false);
+}}
+async function handleGoLive(stream: Stream) {
+  if (!user?.uid) {
+    window.alert('Please sign in to go live.')
+    return
   }
 
+  try {
+    const streamRef = doc(db, 'streams', stream.id)
+
+    await updateDoc(streamRef, {
+      status: 'live',
+      viewers: 0,
+    })
+
+    if (profile?.state) {
+      const displayName =
+        profile.displayName ||
+        user.displayName ||
+        user.email?.split('@')[0] ||
+        stream.broadcaster ||
+        'Sports Family Member'
+
+      const initials = displayName
+        .split(' ')
+        .map((name) => name.charAt(0))
+        .join('')
+        .slice(0, 2)
+        .toUpperCase()
+
+      if (!connectedState) return
+
+const stateFeedId = connectedState
+  .toLowerCase()
+  .replace(/\s+/g, '-')
+
+      const postsRef = collection(
+        db,
+        'stateFeeds',
+        stateFeedId,
+        'posts'
+      )
+
+      const scheduledPostQuery = query(
+        postsRef,
+        where('streamId', '==', stream.id),
+        where('activityType', '==', 'live_scheduled')
+      )
+
+      const scheduledSnapshot = await getDocs(
+        scheduledPostQuery
+      )
+
+      if (!scheduledSnapshot.empty) {
+        const scheduledPostDoc =
+          scheduledSnapshot.docs[0]
+
+        await updateDoc(scheduledPostDoc.ref, {
+          role: `🔴 Live Activity • ${connectedState}`,
+          message: `${displayName} is LIVE now — ${stream.title}`,
+          activityType: 'live_now',
+          createdAt: 'Just now',
+          createdAtMs: Date.now(),
+        })
+      } else {
+        await addDoc(postsRef, {
+          authorId: user.uid,
+          author: displayName,
+          initials,
+          photoURL:
+            profile.avatarUrl ||
+            user.photoURL ||
+            '',
+          role: `🔴 Live Activity • ${connectedState}`,
+          message: `${displayName} is LIVE now — ${stream.title}`,
+          type: 'Update',
+          createdAt: 'Just now',
+          createdAtMs: Date.now(),
+          likes: 0,
+          likedBy: [],
+          comments: [],
+          mediaUrl: '',
+          activityType: 'live_now',
+          streamId: stream.id,
+        })
+      }
+    }
+  } catch (error) {
+    console.error(
+      'Could not start live stream:',
+      error
+    )
+
+    window.alert(
+      'The stream could not be started. Please try again.'
+    )
+  }
+}
+async function handleEndLive(stream: Stream) {
+  if (!user?.uid) {
+    window.alert('Please sign in first.')
+    return
+  }
+
+  try {
+    const streamRef = doc(db, 'streams', stream.id)
+
+    await updateDoc(streamRef, {
+      status: 'replay',
+    })
+
+    if (connectedState) {
+      const displayName =
+        profile?.displayName ||
+        user.displayName ||
+        user.email?.split('@')[0] ||
+        stream.broadcaster ||
+        'Sports Family Member'
+
+      const stateFeedId = connectedState
+  .toLowerCase()
+  .replace(/\s+/g, '-')
+
+      const postsRef = collection(
+        db,
+        'stateFeeds',
+        stateFeedId,
+        'posts'
+      )
+
+      const livePostQuery = query(
+        postsRef,
+        where('streamId', '==', stream.id),
+        where('activityType', '==', 'live_now')
+      )
+
+      const liveSnapshot = await getDocs(livePostQuery)
+
+      if (!liveSnapshot.empty) {
+        const livePostDoc = liveSnapshot.docs[0]
+
+        await updateDoc(livePostDoc.ref, {
+          role: `▶️ Replay • ${connectedState}`,
+          message: `${displayName}'s broadcast "${stream.title}" is now available to replay.`,
+          activityType: 'live_replay',
+          createdAt: 'Replay available',
+          createdAtMs: Date.now(),
+        })
+      }
+    }
+  } catch (error) {
+    console.error('Could not end live stream:', error)
+
+    window.alert(
+      'The live stream could not be ended. Please try again.'
+    )
+  }
+}
+async function addLiveEventToAthleteProfiles(
+  athleteIds: string[],
+  liveEvent: {
+    id: string
+    title?: string
+    sport?: string
+    date?: string
+    streamUrl?: string
+    replayUrl?: string
+    opponent?: string
+    result?: string
+  }
+) {
+  if (!athleteIds.length) return
+
+  try {
+    await Promise.all(
+      athleteIds.map(async (athleteId) => {
+        const userRef = doc(db, "users", athleteId)
+        const userSnap = await getDoc(userRef)
+
+        const existingHistory =
+          userSnap.exists() &&
+          Array.isArray(userSnap.data().liveHistory)
+            ? userSnap.data().liveHistory
+            : []
+
+        const alreadyExists = existingHistory.some(
+          (event: any) => event.id === liveEvent.id
+        )
+
+        const updatedHistory = alreadyExists
+          ? existingHistory.map((event: any) =>
+              event.id === liveEvent.id
+                ? {
+                    ...event,
+                    ...liveEvent,
+                  }
+                : event
+            )
+          : [liveEvent, ...existingHistory]
+
+        await setDoc(
+          userRef,
+          {
+            liveHistory: updatedHistory,
+          },
+          { merge: true }
+        )
+      })
+    )
+  } catch (error) {
+    console.error(
+      "Failed to connect live event to athlete profiles:",
+      error
+    )
+  }
+}
   return (
     <>
       <Head>
@@ -135,24 +786,124 @@ export default function LivePage() {
       </Head>
 
       <main className="livePage">
+        {stateFilter && (
+  <section className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-5">
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <div className="mb-1 text-xs font-black uppercase tracking-[0.2em] text-red-400">
+          🔴 Live • {selectedStateName} Sports Family
+        </div>
+
+        <h1 className="text-3xl font-black text-white">
+          {selectedStateName} Live
+        </h1>
+
+        <p className="mt-1 text-sm text-white/60">
+          High school sports streams from across {selectedStateName}.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={goToCommunity}
+        className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-bold text-white transition hover:bg-white/10"
+      >
+        ← Back to {selectedStateName} Sports Family
+      </button>
+    </div>
+  </section>
+)}
+{stateFilter && (
+  <div className="mb-6 flex flex-wrap gap-3">
+    <button
+      type="button"
+      onClick={() => router.push(`/states/${stateFilter}`)}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      State Community
+    </button>
+
+    <button
+      type="button"
+      onClick={() => goToStatePage("/live")}
+      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-black text-white"
+    >
+      Live
+    </button>
+
+    <button
+      type="button"
+      onClick={() => goToStatePage("/athletes")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Athletes
+    </button>
+
+    <button
+      type="button"
+      onClick={() => goToStatePage("/arena")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Arena
+    </button>
+  </div>
+)}
         <section className="hero">
           <div className="heroContent">
+            {(connectedState || connectedStateId) && (
+  <div
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      gap: "8px",
+      padding: "8px 14px",
+      marginBottom: "12px",
+      borderRadius: "999px",
+      background: "rgba(255,255,255,0.12)",
+      border: "1px solid rgba(255,255,255,0.25)",
+      fontSize: "14px",
+      fontWeight: 700,
+      
+    }}
+  >
+    🏠 Connected to {connectedState || connectedStateId} Sports Family
+  </div>
+)}
             <div className="livePill">
               <span className="pulse" />
               MHSSF LIVE
             </div>
 
-            <h1>Every game. Every athlete. One sports family.</h1>
+            <h1>
+  {stateFilter
+    ? `${selectedStateName} Live Sports`
+    : "Every game. Every athlete. One sports family."}
+</h1>
 
             <p>
-              Watch school broadcasts, athlete streams, featured games,
-              scheduled matchups, and championship replays.
-            </p>
+  {stateFilter
+    ? `Watch school broadcasts, athlete streams, featured games, scheduled matchups, and championship replays from across ${selectedStateName}.`
+    : "Watch school broadcasts, athlete streams, featured games, scheduled matchups, and championship replays."}
+</p>
+          
 
             <div className="heroActions">
-              <a href="#featured-stream" className="watchButton">
-                ▶ Watch featured stream
-              </a>
+             <button
+  type="button"
+  className="watchButton"
+  onClick={() => {
+  if (featuredStream) {
+    router.push(`/live/${featuredStream.id}`)
+    return
+  }
+
+  document
+    .querySelector(".streamDirectory")
+    ?.scrollIntoView({ behavior: "smooth" })
+}}
+>
+  {featuredStream ? "▶ Watch featured stream" : "View scheduled streams"}
+</button>
 
               <button
                 type="button"
@@ -168,22 +919,72 @@ export default function LivePage() {
 
             <div className="heroStats">
               <div>
-                <strong>24</strong>
-                <span>Live now</span>
+                <strong>{liveNowCount}</strong>
+<span>Live now</span>
               </div>
 
               <div>
-                <strong>7.8K</strong>
-                <span>Watching</span>
+                <strong>{watchingNow.toLocaleString()}</strong>
+<span>Watching</span>
               </div>
 
               <div>
-                <strong>38</strong>
-                <span>Games today</span>
+                <strong>{gamesTodayCount}</strong>
+<span>Games today</span>
               </div>
             </div>
           </div>
+{stateFilter && (
+  <div className="mt-6 flex flex-wrap gap-3">
+    <button
+      type="button"
+      onClick={() => setActiveTab("live")}
+      className="rounded-lg bg-red-600 px-4 py-2 text-sm font-black text-white"
+    >
+      Live Games
+    </button>
 
+    <button
+      type="button"
+      onClick={() => setActiveTab("scheduled")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Upcoming
+    </button>
+
+    <button
+      type="button"
+      onClick={() => setActiveTab("replay")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Replays
+    </button>
+
+    <button
+      type="button"
+    onClick={() => goToStatePage("/athletes")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Athletes
+    </button>
+
+    <button
+      type="button"
+      onClick={goToCommunity}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Schools & Community
+    </button>
+
+    <button
+      type="button"
+      onClick={() => goToStatePage("/arena")}
+      className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-bold text-white hover:bg-white/10"
+    >
+      Arena
+    </button>
+  </div>
+)}
           <div className="heroGraphic">
             <div className="broadcastSignal signalOne" />
             <div className="broadcastSignal signalTwo" />
@@ -192,8 +993,15 @@ export default function LivePage() {
               <div className="phoneScreen">
                 <span className="phoneLive">LIVE</span>
                 <div className="phonePlay">▶</div>
-                <strong>Texas Tigers Baseball</strong>
-                <small>1.2K watching</small>
+                <strong>
+  {featuredStream?.title || "MHSF Live"}
+</strong>
+
+<small>
+  {featuredStream
+    ? `${(featuredStream.viewers || 0).toLocaleString()} watching`
+    : "Live sports from your family"}
+</small>
               </div>
             </div>
           </div>
@@ -203,7 +1011,7 @@ export default function LivePage() {
           {successMessage && (
             <div className="successMessage">{successMessage}</div>
           )}
-
+{featuredStream && (
           <section className="featuredSection" id="featured-stream">
             <div className="sectionHeading">
               <div>
@@ -222,47 +1030,58 @@ export default function LivePage() {
                     LIVE
                   </span>
 
-                  <span className="viewerBadge">◉ 1.2K watching</span>
+                  <span className="viewerBadge">
+  ● {(featuredStream?.viewers || 0).toLocaleString()} watching
+</span>
                 </div>
 
                 <button
-                  type="button"
-                  className="largePlay"
-                  aria-label="Play featured stream"
-                >
-                  ▶
-                </button>
-
+  type="button"
+  className="largePlay"
+  aria-label="Play featured stream"
+  disabled={!featuredStream}
+  onClick={() => {
+    if (!featuredStream) return;
+    router.push(`/live/${featuredStream.id}`);
+  }}
+>
+  ▶
+</button>
                 <div className="scoreboard">
-                  <div>
-                    <span>LIBERTY</span>
-                    <strong>2</strong>
-                  </div>
+  <div>
+    <span>{featuredStream?.awayTeam || "AWAY"}</span>
+    <strong>{featuredStream?.awayScore ?? 0}</strong>
+  </div>
 
-                  <span className="inning">TOP 5TH</span>
+  <span className="inning">
+    {featuredStream?.gameClock || "LIVE"}
+  </span>
 
-                  <div>
-                    <strong>4</strong>
-                    <span>TEXAS</span>
-                  </div>
-                </div>
+  <div>
+    <strong>{featuredStream?.homeScore ?? 0}</strong>
+    <span>{featuredStream?.homeTeam || "HOME"}</span>
+  </div>
+</div>
               </div>
 
               <div className="streamInformation">
-                <span className="sportBadge">BASEBALL</span>
+                <span className="sportBadge">
+  {(featuredStream?.sport || "SPORT").toUpperCase()}
+</span>
 
-                <h2>Texas Tigers vs. Liberty Eagles</h2>
+                <h2>{featuredStream?.matchup || "Featured live broadcast"}</h2>
 
                 <p className="streamDescription">
-                  Live varsity baseball from Texas High School in Texarkana,
-                  Texas.
-                </p>
+  {featuredStream
+    ? `${featuredStream.title} — ${featuredStream.school}`
+    : "Featured live broadcast"}
+</p>
 
                 <div className="broadcaster">
                   <div className="broadcasterAvatar">JH</div>
 
                   <div>
-                    <strong>Jordan Hill</strong>
+                    <strong>{featuredStream?.broadcaster || "MHSF Broadcaster"}</strong>
                     <span>Athlete broadcaster</span>
                   </div>
                 </div>
@@ -270,7 +1089,7 @@ export default function LivePage() {
                 <div className="streamDetails">
                   <div>
                     <span>School</span>
-                    <strong>Texas High School</strong>
+                    <strong>{featuredStream?.school || "School"}</strong>
                   </div>
 
                   <div>
@@ -280,34 +1099,103 @@ export default function LivePage() {
 
                   <div>
                     <span>Platform</span>
-                    <strong>MHSSF Live</strong>
+                    <strong>{featuredStream?.platform || "MHSF Live"}</strong>
                   </div>
                 </div>
 
                 <div className="featuredActions">
-                  <button type="button" className="primaryAction">
-                    ▶ Watch now
-                  </button>
+                  <button
+  type="button"
+  className="primaryAction"
+  disabled={!featuredStream}
+  onClick={() => {
+    if (!featuredStream) return;
+    router.push(`/live/${featuredStream.id}`);
+  }}
+>
+  ▶ Watch now
+</button>
 
-                  <button type="button" className="secondaryAction">
-                    ♡ Follow broadcast
-                  </button>
+                  <button
+  type="button"
+  className="secondaryAction"
+  disabled={!featuredStream}
+  onClick={async () => {
+    if (!featuredStream) return;
 
-                  <button type="button" className="iconAction">
-                    ↗
-                  </button>
+    if (!user) {
+      router.push("/signin");
+      return;
+    }
+
+    const followRef = doc(
+      db,
+      "users",
+      user.uid,
+      "followedBroadcasts",
+      featuredStream.id
+    );
+if (isFollowingFeatured) {
+  await deleteDoc(followRef);
+  setIsFollowingFeatured(false);
+  return;
+}
+    await setDoc(
+      followRef,
+      {
+        streamId: featuredStream.id,
+        title: featuredStream.title,
+        matchup: featuredStream.matchup,
+        school: featuredStream.school,
+        sport: featuredStream.sport,
+        followedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    setIsFollowingFeatured(true);
+  }}
+>
+  {isFollowingFeatured ? "♥ Following broadcast" : "♡ Follow broadcast"}
+</button>
+
+                 <button
+  type="button"
+  className="iconAction"
+  aria-label="Share broadcast"
+  onClick={async () => {
+    if (!featuredStream) return;
+
+    const url = `${window.location.origin}/live/${featuredStream.id}`;
+
+    if (navigator.share) {
+      await navigator.share({
+        title: featuredStream.title,
+        text: featuredStream.matchup,
+        url,
+      });
+    } else {
+      await navigator.clipboard.writeText(url);
+      alert("Broadcast link copied!");
+    }
+  }}
+>
+  ↗
+</button>
                 </div>
 
-                <Link
-                  href="/athletes/jordan-hill"
-                  className="athleteProfileLink"
-                >
-                  View athlete profile →
-                </Link>
+                {featuredStream?.athleteIds?.[0] && (
+  <Link
+    href={`/athletes/${featuredStream.athleteIds[0]}`}
+    className="athleteProfileLink"
+  >
+    View athlete profile →
+  </Link>
+)}
               </div>
             </div>
           </section>
-
+)}
           <section className="streamDirectory">
             <div className="directoryTop">
               <div>
@@ -340,8 +1228,28 @@ export default function LivePage() {
             </div>
 
             <div className="streamGrid">
-              {filteredStreams.map((stream, index) => (
-                <article className="streamCard" key={stream.id}>
+              {filteredStreams.length === 0 && (
+  <div
+    style={{
+      gridColumn: "1 / -1",
+      textAlign: "center",
+      padding: "40px 20px",
+      borderRadius: "18px",
+      background: "rgba(255,255,255,0.06)",
+      border: "1px solid rgba(255,255,255,0.12)",
+    }}
+  >
+    <h3 style={{ marginBottom: "8px", fontSize: "22px" }}>
+    No {selectedStateName} streams are showing right now
+    </h3>
+
+    <p style={{ opacity: 0.75, margin: 0 }}>
+    National streams and new {selectedStateName} broadcasts will appear
+    </p>
+  </div>
+)}
+                {filteredStreams.map((stream, index) => (
+                  <article className="streamCard" key={stream.id}>
                   <div
                     className={`thumbnail thumbnail${(index % 4) + 1}`}
                   >
@@ -387,11 +1295,51 @@ export default function LivePage() {
                       <span>{stream.sport}</span>
                       <small>{stream.platform}</small>
                     </div>
+{(stream.state || stream.stateId) && (
+  <button
+  type="button"
+  onClick={() => {
+    const targetStateId =
+      stream.stateId ||
+      stream.state?.toLowerCase().replace(/\s+/g, "-")
 
+    if (!targetStateId || targetStateId === "national") return
+
+    router.push(`/states/${targetStateId}`)
+  }}
+    style={{
+      display: "inline-flex",
+      alignItems: "center",
+      padding: "5px 10px",
+      marginBottom: "10px",
+      borderRadius: "999px",
+      fontSize: "12px",
+      fontWeight: 700,
+      cursor: stream.stateId === "national" ? "default" : "pointer",
+color: "inherit",
+      background: "transparent",
+border: "1px solid white",
+    }}
+  >
+    📍 {stream.state || stream.stateId}
+  </button>
+)}
                     <h3>{stream.title}</h3>
                     <p className="matchup">{stream.matchup}</p>
 
-                    <div className="streamerRow">
+                <div
+  className="streamerRow"
+  onClick={() => {
+    const profileId = stream.ownerId || stream.createdBy
+
+    if (!profileId) return
+
+    router.push(`/athletes/${profileId}`)
+  }}
+  style={{
+    cursor: stream.ownerId || stream.createdBy ? "pointer" : "default",
+  }}
+>    
                       <div className="miniAvatar">
                         {stream.broadcaster
                           .split(' ')
@@ -399,9 +1347,29 @@ export default function LivePage() {
                           .join('')
                           .slice(0, 2)}
                       </div>
-
                       <div>
-                        <strong>{stream.broadcaster}</strong>
+                        <button
+  type="button"
+  onClick={(event) => {
+    event.stopPropagation()
+
+    if (!stream.schoolId) return
+
+    router.push(`/schools/${stream.schoolId}`)
+  }}
+  style={{
+    display: "block",
+    padding: 0,
+    border: "none",
+    background: "transparent",
+    color: "inherit",
+    font: "inherit",
+    cursor: stream.schoolId ? "pointer" : "default",
+    textAlign: "left",
+  }}
+>
+  {stream.school}
+</button>
                         <span>{stream.school}</span>
                       </div>
                     </div>
@@ -411,19 +1379,51 @@ export default function LivePage() {
                         ◷ {stream.scheduledTime}
                       </div>
                     )}
-
-                    <button type="button" className="cardButton">
-                      {stream.status === 'live'
-                        ? 'Watch live'
-                        : stream.status === 'scheduled'
-                          ? 'Set reminder'
-                          : 'Watch replay'}
-                    </button>
                   </div>
-                </article>
-              ))}
-            </div>
-          </section>
+
+                  <div className="cardActions">
+  <button
+    type="button"
+    className="cardButton"
+    onClick={() => {
+      console.log("Opening stream:", stream.id);
+      void router.push(`/live/${stream.id}`);
+    }}
+  >
+    {stream.status === "live"
+      ? "Watch Live"
+      : stream.status === "replay"
+        ? "Watch Replay"
+        : "View Stream"}
+  </button>
+  {stream.status === 'scheduled' &&
+  stream.ownerId === user?.uid && (
+  <button
+    type="button"
+    className="cardButton"
+    onClick={() => handleGoLive(stream)}
+  >
+    🔴 Go Live
+  </button>
+)}
+{stream.status === 'live' &&
+  stream.ownerId === user?.uid && (
+    <button
+      type="button"
+      className="cardButton"
+      onClick={() => handleEndLive(stream)}
+    >
+      ⏹ End Live
+    </button>
+  )}
+</div>
+
+
+</article>
+))}
+
+</div>
+</section>
 
           <section className="creatorSection">
             <div>
@@ -512,6 +1512,7 @@ export default function LivePage() {
                   Athlete or broadcaster
                   <input
                     name="broadcaster"
+                    defaultValue={profile?.displayName || ""}
                     placeholder="Athlete name"
                     required
                   />
@@ -554,11 +1555,58 @@ export default function LivePage() {
 
               <div className="formGrid">
                 <label>
+                  <div className="formGrid">
+  <label>
+    Away team
+    <input
+      name="awayTeam"
+      placeholder="Liberty Eagles"
+    />
+  </label>
+
+  <label>
+    Home team
+    <input
+      name="homeTeam"
+      placeholder="Texas Tigers"
+    />
+  </label>
+</div>
+
+<div className="formGrid">
+  <label>
+    Away score
+    <input
+      name="awayScore"
+      type="number"
+      min="0"
+      defaultValue="0"
+    />
+  </label>
+
+  <label>
+    Home score
+    <input
+      name="homeScore"
+      type="number"
+      min="0"
+      defaultValue="0"
+    />
+  </label>
+</div>
+
+<label>
+  Game clock / inning / quarter
+  <input
+    name="gameClock"
+    placeholder="TOP 5TH, Q3 4:32, 2ND HALF"
+  />
+</label>
                   Date and time
-                  <input
-                    name="scheduledTime"
-                    placeholder="Friday at 7:30 PM"
-                  />
+               <input
+  name="scheduledTime"
+  type="datetime-local"
+/>
                 </label>
 
                 <label>
@@ -587,7 +1635,81 @@ export default function LivePage() {
                 browser. We will connect this form to Firebase after the page
                 design is approved.
               </p>
+{/* TAG ATHLETES */}
+<div className="mt-4">
+  <label className="block text-sm font-bold mb-2">
+    Tag Athletes
+  </label>
 
+  <div className="flex gap-2">
+    <input
+      type="text"
+      value={athleteSearch}
+      onChange={(e) => setAthleteSearch(e.target.value)}
+      placeholder="Search athlete, school, or sport..."
+      className="flex-1 border rounded-lg px-3 py-2 bg-transparent"
+    />
+
+    <button
+      type="button"
+      onClick={searchAthletes}
+      className="px-4 py-2 rounded-lg border font-semibold"
+    >
+      Search
+    </button>
+  </div>
+
+  {athleteResults.length > 0 && (
+    <div className="mt-3 space-y-2">
+      {athleteResults.map((athlete: any) => {
+        const selected = selectedAthleteIds.includes(athlete.id)
+
+        return (
+          <button
+            key={athlete.id}
+            type="button"
+            onClick={() => {
+              setSelectedAthleteIds((current) =>
+                selected
+                  ? current.filter((id) => id !== athlete.id)
+                  : [...current, athlete.id]
+              )
+            }}
+            className={`w-full text-left border rounded-xl p-3 ${
+              selected ? "ring-2 ring-red-500" : ""
+            }`}
+          >
+            <div className="font-bold">
+              {athlete.displayName || "Athlete"}
+            </div>
+
+            <div className="text-xs text-gray-500 mt-1">
+              {athlete.schoolId || "No school"}{" "}
+              {athlete.sports
+                ? `• ${
+                    Array.isArray(athlete.sports)
+                      ? athlete.sports.join(", ")
+                      : athlete.sports
+                  }`
+                : ""}
+            </div>
+
+            <div className="text-xs font-semibold mt-2">
+              {selected ? "✅ Tagged" : "+ Tag Athlete"}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )}
+
+  {selectedAthleteIds.length > 0 && (
+    <p className="text-sm font-semibold mt-3">
+      ✅ {selectedAthleteIds.length} athlete
+      {selectedAthleteIds.length === 1 ? "" : "s"} tagged
+    </p>
+  )}
+</div>
               <div className="modalActions">
                 <button
                   type="button"

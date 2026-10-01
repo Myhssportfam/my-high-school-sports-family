@@ -51,13 +51,81 @@ export default function SchoolPage() {
   }, [schoolId])
 
   if (loading) return <div className="container py-8">Loading school...</div>
-  if (!school) return <div className="container py-8">School not found</div>
+  const fallbackSchool = {
+  id: schoolId || 'sample-school',
+  name:
+  schoolId === 'sample-school-1'
+    ? 'Rankings Central High School'
+    : schoolId === 'sample-school-2'
+    ? 'Rankings Sports Academy'
+    : schoolId === 'sample-school-3'
+    ? 'Rankings West High School'
+    : 'Community High School',
+  city: cityId
+    ? cityId
+        .split('-')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ')
+    : stateId === 'co'
+? 'Colorado'
+: 'Community',
+  state: stateId?.toUpperCase() || 'TX',
+  mascot:
+    schoolId === 'sample-school-1'
+      ? 'Tigers'
+      : schoolId === 'sample-school-2'
+        ? 'Eagles'
+        : 'Panthers',
+}
+
+const displayedSchool = school || fallbackSchool
+
+
 
   return (
     <div className="container py-8">
-      <Breadcrumbs items={[{ href: '/', label: 'Home' }, { href: '/states', label: 'States' }, { href: `/states/${stateId}`, label: stateId?.toUpperCase() || '' }, { href: `/states/${stateId}/${cityId}`, label: cityId || '' }, { label: school.name }]} />
-      <SchoolHeader school={school} />
+      <Breadcrumbs items={[{ href: '/', label: 'Home' }, { href: '/states', label: 'States' }, { href: `/states/${stateId}`, label: stateId?.toUpperCase() || '' }, { href: `/states/${stateId}/${cityId}`, label: cityId || '' }, { label: displayedSchool.name }]} />
+      <SchoolHeader school={displayedSchool} />
+<section className="mb-8 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+  <div className="border-b border-gray-200 px-5 py-4">
+    <p className="text-xs font-black uppercase tracking-[0.22em] text-red-600">
+      School Sports
+    </p>
 
+    <h2 className="mt-1 text-2xl font-black text-slate-950">
+      Explore Houston Central Teams
+    </h2>
+  </div>
+
+  <div className="flex gap-3 overflow-x-auto px-5 py-4">
+    {[
+      { name: 'Football', icon: '🏈' },
+      { name: 'Baseball', icon: '⚾' },
+      { name: 'Basketball', icon: '🏀' },
+      { name: 'Soccer', icon: '⚽' },
+      { name: 'Softball', icon: '🥎' },
+      { name: 'Volleyball', icon: '🏐' },
+      { name: 'Track', icon: '🏃' },
+      { name: 'Wrestling', icon: '🤼' },
+      { name: 'Tennis', icon: '🎾' },
+      { name: 'Golf', icon: '⛳' },
+    ].map((sport, index) => (
+      <button
+        key={sport.name}
+        type="button"
+        onClick={() => window.location.href = `/states/${stateId}/${cityId}/${displayedSchool.id}/${sport.name.toLowerCase()}`}
+        className={`flex min-w-fit items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition ${
+          index === 0
+            ? 'border-red-600 bg-red-600 text-white'
+            : 'border-gray-200 bg-white text-slate-700 hover:border-red-300 hover:bg-red-50'
+        }`}
+      >
+        <span>{sport.icon}</span>
+        <span>{sport.name}</span>
+      </button>
+    ))}
+  </div>
+</section>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">
           <section>

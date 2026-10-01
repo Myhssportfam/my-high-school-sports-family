@@ -1,6 +1,7 @@
 import Head from 'next/head'
 import Link from 'next/link'
 import { FormEvent, useMemo, useState } from 'react'
+import ArenaAccessGate from '../../components/arena/ArenaAccessGate'
 
 type ChatMessage = {
   id: number
@@ -54,6 +55,42 @@ export default function DynastyRoomPage() {
     [],
   )
 
+  function leaveTeam() {
+    setJoinedTeam(null)
+    setIsReady(false)
+    setNotice('You left the team and are now a spectator.')
+  }
+
+  function toggleReady() {
+    if (!joinedTeam) {
+      setNotice('Join Texas or Florida before readying up.')
+      return
+    }
+
+    setIsReady((current) => !current)
+    setNotice(isReady ? 'You are no longer ready.' : 'You are ready to play.')
+  }
+
+  function addPoint(team: 'Texas' | 'Florida') {
+    if (!joinedTeam) {
+      setNotice('Join a team before changing the score.')
+      return
+    }
+
+    if (joinedTeam !== team) {
+      setNotice(`You can only add points for ${joinedTeam}.`)
+      return
+    }
+
+    if (team === 'Texas') {
+      setHomeScore((current) => current + 1)
+    } else {
+      setAwayScore((current) => current + 1)
+    }
+
+    setNotice(`${team} scored a point.`)
+  }
+
   function sendMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -96,8 +133,9 @@ export default function DynastyRoomPage() {
   }
 
   return (
-    <>
-      <Head>
+    <ArenaAccessGate>
+      <>
+        <Head>
         <title>College Football 27 Dynasty Room | MHSSF</title>
         <meta
           name="description"
@@ -135,7 +173,7 @@ export default function DynastyRoomPage() {
                   className="primaryButton"
                   onClick={() => joinTeam('Texas')}
                 >
-                  Join Texas Team
+                  Join Texas
                 </button>
 
                 <button
@@ -143,7 +181,7 @@ export default function DynastyRoomPage() {
                   className="secondaryButton"
                   onClick={() => joinTeam('Florida')}
                 >
-                  Join Florida Team
+                  Join Florida
                 </button>
               </div>
             </div>
@@ -155,7 +193,7 @@ export default function DynastyRoomPage() {
                 <div className="score">{homeScore}</div>
                 <button
                   type="button"
-                  onClick={() => setHomeScore((score) => score + 1)}
+                  onClick={() => addPoint('Texas')}
                 >
                   Add Point
                 </button>
@@ -169,7 +207,7 @@ export default function DynastyRoomPage() {
                 <div className="score">{awayScore}</div>
                 <button
                   type="button"
-                  onClick={() => setAwayScore((score) => score + 1)}
+                  onClick={() => addPoint('Florida')}
                 >
                   Add Point
                 </button>
@@ -828,6 +866,7 @@ export default function DynastyRoomPage() {
           }
         }
       `}</style>
-    </>
+      </>
+    </ArenaAccessGate>
   )
 }

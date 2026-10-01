@@ -6,7 +6,7 @@ import { UserProfile } from '../types/user'
 export function useUserProfile(uid?: string) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const [loading, setLoading] = useState(true)
-
+  const [isPrivateProfile, setIsPrivateProfile] = useState(false)
   useEffect(() => {
     if (!uid || !db) {
       setProfile(null)
@@ -25,5 +25,5 @@ export function useUserProfile(uid?: string) {
     return () => unsub()
   }, [uid])
 
-  return { profile, loading }
+  return { profile, loading, isPrivateProfile }
 }

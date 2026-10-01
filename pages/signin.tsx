@@ -10,18 +10,38 @@ export default function SignIn() {
   const [loading, setLoading] = useState(false)
 
   async function onSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    setError(null)
-    setLoading(true)
-    try {
-      await signInWithEmail({ email, password })
-      router.push('/profile')
-    } catch (err: any) {
-      setError(err.message || 'Sign in failed')
-    } finally {
-      setLoading(false)
-    }
+  e.preventDefault()
+  setError(null)
+  setLoading(true)
+
+  try {
+    console.log("Starting sign-in for:", email)
+
+    const user = await signInWithEmail({
+  email: email.trim(),
+  password,
+})
+
+
+    console.log("Signed-in user:", user.uid)
+
+    const next =
+  typeof router.query.next === "string"
+    ? router.query.next
+    : "/profile"
+
+await router.replace(next)
+  } catch (err: unknown) {
+    console.error("Sign-in error:", err)
+
+    const message =
+      err instanceof Error ? err.message : "Sign in failed."
+
+    setError(message)
+  } finally {
+    setLoading(false)
   }
+}
 
   async function onGoogle() {
     setError(null)

@@ -1,20 +1,32 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react"
+import { auth } from "../lib/firebase";
+import { uploadMedia } from "../lib/uploadMedia";
+import {
+  createStory,
+  recordStoryView,
+  subscribeToActiveStories,
+} from "../lib/stories";
 
 type MediaType = "Photo" | "Video"
 
 type Story = {
   id: string
+  firestoreId?: string 
   name: string
   sport: string
   emoji: string
+avatarUrl?: string
   mediaType?: MediaType
   mediaUrl?: string
   isLive?: boolean
   isUserStory?: boolean
+  linkUrl?: string
 }
 
 type StoriesBarProps = {
-  stateName?: string
+  stateId: string
+  stateName: string
+  uploadStateId?: string
 }
 
 const defaultStories: Story[] = [
@@ -71,19 +83,21 @@ const defaultStories: Story[] = [
 ]
 
 export default function StoriesBar({
-  stateName = "Colorado",
+  stateId,
+  stateName,
+  uploadStateId,
 }: StoriesBarProps) {
   const [stories, setStories] = useState<Story[]>(defaultStories)
   const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(
     null
   )
   const [storyProgress, setStoryProgress] = useState(0)
-  const [isStoryMuted, setIsStoryMuted] = useState(true)
-
+  const [isStoryMuted, setIsStoryMuted] = useState(false)
+const storyVideoRef = useRef<HTMLVideoElement | null>(null)
   const storyFileInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const createdObjectUrlsRef = useRef<string[]>([])
-
+const [storyLinkUrl, setStoryLinkUrl] = useState("")
   const activeStory =
     activeStoryIndex !== null ? stories[activeStoryIndex] : null
 
@@ -91,62 +105,128 @@ export default function StoriesBar({
     storyFileInputRef.current?.click()
   }
 
-  const handleStoryFile = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
+  const handleStoryFile = async (
+  event: ChangeEvent<HTMLInputElement>
+) => {
+  const selectedFiles = Array.from(event.target.files ?? []);
 
-    if (!file) {
-      return
-    }
+  if (selectedFiles.length === 0) {
+    return;
+  }
 
-    const isVideo = file.type.startsWith("video/")
-    const isPhoto = file.type.startsWith("image/")
+  const user = auth.currentUser;
 
-    if (!isVideo && !isPhoto) {
-      window.alert("Please choose an image or video file.")
-      event.target.value = ""
-      return
-    }
+  if (!user) {
+    window.alert("You must be signed in to add a story.");
+    event.target.value = "";
+    return;
+  }
+const storyStateId =
+  uploadStateId === undefined ? stateId : uploadStateId;
 
-    const mediaUrl = URL.createObjectURL(file)
-    createdObjectUrlsRef.current.push(mediaUrl)
+if (!storyStateId) {
+  window.alert(
+    "Choose your state community in your profile before adding a story."
+  );
+  event.target.value = "";
+  return;
+}
+  const validFiles = selectedFiles.filter((file) => {
+    return (
+      file.type.startsWith("image/") ||
+      file.type.startsWith("video/")
+    );
+  });
 
-    const newStory: Story = {
-      id: `user-story-${Date.now()}`,
-      name: "Your Story",
-      sport: isVideo ? "Video" : "Photo",
-      emoji: "YOU",
-      mediaType: isVideo ? "Video" : "Photo",
-      mediaUrl,
-      isUserStory: true,
+  if (validFiles.length === 0) {
+    window.alert("Please choose image or video files.");
+    event.target.value = "";
+    return;
+  }
+
+  try {
+    const uploadedStories: Story[] = [];
+
+    for (let index = 0; index < validFiles.length; index += 1) {
+      const file = validFiles[index];
+      const isVideo = file.type.startsWith("video/");
+console.log("Current User:", auth.currentUser);
+console.log("UID:", auth.currentUser?.uid);
+      const uploadedMedia = await uploadMedia(file, user.uid);
+
+      await createStory({
+        stateId: storyStateId,
+        userId: user.uid,
+        userName:
+          user.displayName ||
+          user.email?.split("@")[0] ||
+          "MyHSSportsFamily User",
+          avatarUrl: user.photoURL || "",
+        mediaUrl: uploadedMedia.downloadURL,
+        mediaType: uploadedMedia.fileType,
+      });
+
+      uploadedStories.push({
+        id: `user-story-${Date.now()}-${index}`,
+        name: "Your Story",
+        sport: isVideo ? "Video" : "Photo",
+        emoji: "YOU",
+        mediaType: isVideo ? "Video" : "Photo",
+        mediaUrl: uploadedMedia.downloadURL,
+        isUserStory: true,
+        linkUrl: storyLinkUrl.trim(),
+      });
     }
 
     setStories((currentStories) => {
-      const withoutOldUserUploads = currentStories.filter(
+      const yourStoryButton = currentStories.find(
+        (story) => story.id === "your-story"
+      );
+
+      const existingUserStories = currentStories.filter(
         (story) =>
-          story.id === "your-story" || !story.id.startsWith("user-story-")
-      )
+          story.id !== "your-story" &&
+          story.id.startsWith("user-story-")
+      );
+
+      const communityStories = currentStories.filter(
+        (story) =>
+          story.id !== "your-story" &&
+          !story.id.startsWith("user-story-")
+      );
 
       return [
-        withoutOldUserUploads[0],
-        newStory,
-        ...withoutOldUserUploads.slice(1),
-      ]
-    })
+        ...(yourStoryButton ? [yourStoryButton] : []),
+        ...uploadedStories,
+        ...existingUserStories,
+        ...communityStories,
+      ];
+    });
 
-    setActiveStoryIndex(1)
-    setStoryProgress(0)
-    event.target.value = ""
+    setStoryLinkUrl("");
+    setActiveStoryIndex(1);
+    setStoryProgress(0);
+
+    window.alert(
+      `${uploadedStories.length} story item${
+        uploadedStories.length === 1 ? "" : "s"
+      } uploaded successfully.`
+    );
+  } catch (error) {
+    console.error("Story upload failed:", error);
+
+    window.alert(
+      error instanceof Error
+        ? error.message
+        : "The story upload failed."
+    );
+  } finally {
+    event.target.value = "";
   }
+};
 
-  const openStory = (story: Story, index: number) => {
-    if (story.id === "your-story" && !story.mediaUrl) {
-      openStoryPicker()
-      return
-    }
-
-    setActiveStoryIndex(index)
-    setStoryProgress(0)
-  }
+    
+  
 
   const closeStory = () => {
     setActiveStoryIndex(null)
@@ -169,7 +249,7 @@ export default function StoriesBar({
       closeStory()
       return
     }
-
+setIsStoryMuted(false)
     setActiveStoryIndex(nextIndex)
     setStoryProgress(0)
   }
@@ -197,11 +277,9 @@ export default function StoriesBar({
 
     setStoryProgress(0)
 
-    if (activeStory.mediaType === "Video") {
-      return
-    }
+    
 
-    const duration = 5000
+    const duration = 45000
     const intervalSpeed = 50
     const progressIncrease = (intervalSpeed / duration) * 100
 
@@ -231,7 +309,49 @@ export default function StoriesBar({
       })
     }
   }, [])
+useEffect(() => {
+  const unsubscribe = subscribeToActiveStories(
+  stateId,
+  (firebaseStories) => {
+    const loadedStories: Story[] = firebaseStories.map((story) => ({
+      id: `firebase-story-${story.id}`,
+      name: story.userName,
+      avatarUrl: story.avatarUrl,
+      sport: story.mediaType === "video" ? "Video" : "Photo",
+      emoji:
+        story.userId === auth.currentUser?.uid
+          ? "YOU"
+          : story.userName.slice(0, 2).toUpperCase(),
+      mediaType:
+        story.mediaType === "video"
+          ? "Video"
+          : "Photo",
+      mediaUrl: story.mediaUrl,
+      isUserStory: story.userId === auth.currentUser?.uid,
+    }));
 
+    setStories((currentStories) => {
+      const yourStoryButton = currentStories.find(
+        (story) => story.id === "your-story"
+      );
+
+      const communityStories = currentStories.filter(
+        (story) =>
+          story.id !== "your-story" &&
+          !story.id.startsWith("user-story-") &&
+          !story.id.startsWith("firebase-story-")
+      );
+
+      return [
+        ...(yourStoryButton ? [yourStoryButton] : []),
+        ...loadedStories,
+        ...communityStories,
+      ];
+    });
+  });
+
+  return unsubscribe;
+}, [stateId]);
   return (
     <>
       <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
@@ -248,79 +368,127 @@ export default function StoriesBar({
         </div>
 
         <input
-          ref={storyFileInputRef}
-          id="story-file-upload"
-          type="file"
-          accept="image/*,video/*"
-          onChange={handleStoryFile}
-          className="hidden"
-        />
+  ref={storyFileInputRef}
+  id="story-file-upload"
+  type="file"
+  accept="image/*,video/*"
+  multiple
+  onChange={handleStoryFile}
+  className="hidden"
+/>
 
         <div className="flex gap-4 overflow-x-auto pb-2">
-          {stories.map((story, index) => {
-            const hasMedia = Boolean(story.mediaUrl)
+          {stories
+  .filter(
+    (story, index, allStories) =>
+      story.id === "your-story" ||
+      !story.isUserStory ||
+      index ===
+        allStories.findIndex(
+          (item) => item.isUserStory && Boolean(item.mediaUrl)
+        )
+  )
+  .map((story) => {
+    const hasMedia = Boolean(story.mediaUrl)
 
-            return (
-              <button
-                key={story.id}
-                type="button"
-                onClick={() => openStory(story, index)}
-                className="min-w-[86px] text-center"
-              >
-                <div className="relative mx-auto h-[78px] w-[78px] rounded-full bg-gradient-to-br from-red-600 via-orange-500 to-blue-600 p-[3px]">
-                  <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-4 border-white bg-gray-100">
-                    {hasMedia && story.mediaType === "Video" ? (
-                      <video
-                        src={story.mediaUrl}
-                        muted
-                        playsInline
-                        preload="metadata"
-                        className="h-full w-full object-cover"
-                      />
-                    ) : hasMedia && story.mediaType === "Photo" ? (
-                      <img
-                        src={story.mediaUrl}
-                        alt={story.name}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span
-                        className={
-                          story.isUserStory
-                            ? "text-xs font-black text-red-800"
-                            : "text-3xl"
-                        }
-                      >
-                        {story.emoji}
-                      </span>
-                    )}
-                  </div>
+    return (
+      <div key={story.id} className="relative min-w-[86px] text-center">
+        <button
+          type="button"
+          onClick={async () => {
+  const originalIndex = stories.findIndex(
+    (item) => item.id === story.id
+  )
 
-                  {story.isLive && (
-                    <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded-md bg-red-600 px-2 py-1 text-[10px] font-black text-white">
-                      LIVE
-                    </span>
-                  )}
+  setActiveStoryIndex(originalIndex)
 
-                  {story.isUserStory && !hasMedia && (
-                    <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-white bg-blue-600 text-sm font-bold text-white">
-                      +
-                    </span>
-                  )}
-                </div>
+  const currentUser = auth.currentUser
 
-                <p className="mt-2 truncate text-sm font-bold text-gray-900">
-                  {story.name}
-                </p>
+  if (
+    currentUser &&
+    story.firestoreId &&
+    !story.isUserStory
+  ) {
+    try {
+     await recordStoryView(
+  stateId,
+  story.firestoreId,
+  currentUser.uid,
+  currentUser.displayName ||
+    currentUser.email?.split("@")[0] ||
+    "MyHSSportsFamily User"
+)
+    } catch (error) {
+      console.error("Could not record story view:", error)
+    }
+  }
+}}
+          className="block w-full"
+        >
+          <div className="relative mx-auto h-[78px] w-[78px] rounded-full">
+            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border-2 border-red-500 bg-white">
+              {hasMedia && story.mediaType === "Video" ? (
+                <video
+                  src={story.mediaUrl}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full object-cover"
+                />
+              ) : hasMedia && story.mediaType === "Photo" ? (
+                <img
+                  src={story.mediaUrl}
+                  alt={story.name}
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <span
+                  className={
+                    story.id === "your-story"
+                      ? "text-xs font-black text-red-800"
+                      : "text-3xl"
+                  }
+                >
+                  {story.emoji}
+                </span>
+              )}
+            </div>
 
-                <p className="truncate text-xs text-gray-500">
-                  {story.sport}
-                </p>
-              </button>
-            )
-          })}
+            {story.isLive && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 rounded bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
+                LIVE
+              </span>
+            )}
+          </div>
+
+          <p className="mt-2 truncate text-sm font-bold text-gray-900">
+            {story.name}
+          </p>
+
+          <p className="truncate text-xs text-gray-500">
+            {story.id === "your-story" ? "Add Story" : story.sport}
+          </p>
+        </button>
+
+        {story.id === "your-story" && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation()
+              openStoryPicker()
+            }}
+            className="absolute right-0 top-[52px] z-20 flex h-7 w-7 items-center justify-center rounded-full bg-blue-600 text-lg font-bold text-white"
+            aria-label="Add another story"
+          >
+            +
+          </button>
+        )}
+      </div>
+    )
+  })}
         </div>
       </section>
+
 
       {activeStory && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4">
@@ -347,7 +515,15 @@ export default function StoriesBar({
 
           <div className="absolute left-6 top-8 z-30 flex items-center gap-3 text-white">
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-700 text-xs font-black">
-              {activeStory.emoji}
+              {activeStory.avatarUrl ? (
+  <img
+    src={activeStory.avatarUrl}
+    alt={activeStory.name}
+    className="h-full w-full rounded-full object-cover"
+  />
+) : (
+  activeStory.emoji
+)}
             </div>
 
             <div>
@@ -388,7 +564,7 @@ export default function StoriesBar({
                 autoPlay
                 muted={isStoryMuted}
                 playsInline
-                controls
+              
                 onTimeUpdate={(event) => {
                   const video = event.currentTarget
 
@@ -425,6 +601,19 @@ export default function StoriesBar({
                     LIVE NOW
                   </span>
                 )}
+                {activeStory.linkUrl && (
+  <a
+    href={activeStory.linkUrl}
+    target="_blank"
+    rel="noopener noreferrer"
+    onClick={(event) => {
+      event.stopPropagation()
+    }}
+    className="absolute bottom-20 left-1/2 z-40 -translate-x-1/2 rounded-full bg-white px-5 py-3 font-bold text-black shadow-xl"
+  >
+    Visit Link ↗
+  </a>
+)}
               </div>
             )}
           </div>

@@ -1,8 +1,27 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { storage } from '../lib/firebase'
+import { storage, auth, db } from '../lib/firebase'
 import MediaEditor from './MediaEditor'
+import { useRouter } from 'next/router'
+import { useUserProfile } from '../hooks/useUserProfile'
+
+
+import {
+  addDoc,
+  arrayRemove,
+  arrayUnion,
+  collection,
+  deleteDoc, 
+  doc,
+  increment,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+} from 'firebase/firestore'
+
 type StateFeedProps = {
+  stateId: string
   stateName: string
 }
 
@@ -10,14 +29,18 @@ type PostType = 'Update' | 'Photo' | 'Video' | 'Check In'
 
 type Comment = {
   id: string
+  authorId?: string
   author: string
+  photoURL?: string
   message: string
 }
 
 type FeedPost = {
   id: string
+  authorId?: string
   author: string
   initials: string
+  photoURL?: string
   role: string
   message: string
   type: PostType
@@ -26,6 +49,9 @@ type FeedPost = {
   liked: boolean
   comments: Comment[]
   mediaUrl?: string
+  activityType?: string
+roomId?: string
+streamId?: string
 }
 
 function createStarterPosts(stateName: string): FeedPost[] {
@@ -78,61 +104,167 @@ function createStarterPosts(stateName: string): FeedPost[] {
   ]
 }
 
-export default function StateFeed({ stateName }: StateFeedProps) {
+export default function StateFeed({ stateId, stateName }: StateFeedProps) {
+  const router = useRouter()
+  const sharedPostId =
+  typeof router.query.post === 'string'
+    ? router.query.post
+    : ''
   const [message, setMessage] = useState('')
   const [postType, setPostType] = useState<PostType>('Update')
   const [posts, setPosts] = useState<FeedPost[]>([])
   const [commentText, setCommentText] = useState<Record<string, string>>({})
+  const [postingComment, setPostingComment] = useState<Record<string, boolean>>({})
   const photoInputRef = useRef<HTMLInputElement>(null)
 const videoInputRef = useRef<HTMLInputElement>(null)
-
+const sharedPostRef = useRef<HTMLDivElement | null>(null)
 const [selectedFileName, setSelectedFileName] = useState('')
 const [selectedMediaUrl, setSelectedMediaUrl] = useState('')
 const [checkInLocation, setCheckInLocation] = useState('')
   const [showComments, setShowComments] = useState<Record<string, boolean>>({})
 const [showMediaEditor, setShowMediaEditor] = useState(false)
+const [currentUser, setCurrentUser] = useState({
+  uid: '',
+  name: 'YOU',
+  initials: 'YOU',
+  photoURL: '',
+})
+const { profile } = useUserProfile(currentUser.uid)
+const feedUserName = profile?.displayName || currentUser.name
+const feedUserPhoto = profile?.avatarUrl || currentUser.photoURL
+const feedUserInitials = feedUserName
+  .split(' ')
+  .map((name) => name.charAt(0))
+  .join('')
+  .slice(0, 2)
+  .toUpperCase()
+const profileRole = [
+  profile?.role,
+  profile?.sports?.join(', '),
+  profile?.state,
+]
+  .filter(Boolean)
+  .join(' • ')
   const storageKey = useMemo(
     () => `mhssf-state-feed-${stateName.toLowerCase().replace(/\s+/g, '-')}`,
     [stateName]
   )
-
-  useEffect(() => {
-    const savedPosts = window.localStorage.getItem(storageKey)
-
-    if (savedPosts) {
-      try {
-        setPosts(JSON.parse(savedPosts) as FeedPost[])
-        return
-      } catch {
-        window.localStorage.removeItem(storageKey)
-      }
+useEffect(() => {
+  const unsubscribe = auth.onAuthStateChanged((user) => {
+    if (!user) {
+      setCurrentUser({
+        uid: '',
+        name: 'YOU',
+        initials: 'YOU',
+        photoURL: '',
+      })
+      return
     }
 
-    setPosts(createStarterPosts(stateName))
-  }, [stateName, storageKey])
+    const displayName = user.displayName || user.email?.split('@')[0] || 'Athlete'
+const sharedPostId =
+  typeof router.query.post === 'string'
+    ? router.query.post
+    : ''
+    const initials = displayName
+      .split(' ')
+      .map((word) => word.charAt(0))
+      .join('')
+      .slice(0, 2)
+      .toUpperCase()
 
- useEffect(() => {
-  if (posts.length === 0) return
+    setCurrentUser({
+      uid: user.uid,
+      name: displayName,
+      initials: initials || 'YOU',
+      photoURL: user.photoURL || '',
+    })
+  })
 
-  try {
-    const safePosts = posts.map((post) => ({
-      ...post,
-      mediaUrl:
-        post.mediaUrl?.startsWith('data:video/')
-          ? undefined
-          : post.mediaUrl,
-    }))
+  return () => unsubscribe()
+}, [])
+useEffect(() => {
+  if (!db || !stateId?.trim()) return
 
-    window.localStorage.setItem(
-      storageKey,
-      JSON.stringify(safePosts)
-    )
-  } catch (error) {
-    console.warn('Feed could not be saved:', error)
-  }
-}, [posts, storageKey])
+  const stateFeedId = stateId
 
-  function createPost() {
+  const postsRef = collection(
+    db,
+    'stateFeeds',
+    stateFeedId,
+    'posts'
+  )
+
+  const postsQuery = query(
+    postsRef,
+    orderBy('createdAtMs', 'desc')
+  )
+
+  const unsubscribe = onSnapshot(
+    postsQuery,
+    (snapshot) => {
+      const livePosts: FeedPost[] = snapshot.docs.map((postDoc) => {
+        const data = postDoc.data()
+
+        return {
+          id: postDoc.id,
+          authorId: data.authorId || '',
+          author: data.author || 'Sports Family Member',
+          initials: data.initials || 'SF',
+          photoURL: data.photoURL || undefined,
+          role: data.role || `${stateName} Sports Family`,
+          message: data.message || '',
+          type: data.type || 'Update',
+          createdAt: data.createdAt || 'Just now',
+          likes: data.likes || 0,
+          liked:
+  !!currentUser.uid &&
+  Array.isArray(data.likedBy) &&
+  data.likedBy.includes(currentUser.uid),
+          comments: data.comments || [],
+          mediaUrl: data.mediaUrl || undefined,
+          activityType: data.activityType || undefined,
+roomId: data.roomId || undefined,
+streamId: data.streamId || undefined,
+        }
+      })
+
+      if (livePosts.length > 0) {
+        setPosts([
+          ...livePosts,
+          ...createStarterPosts(stateName),
+        ])
+      } else {
+        setPosts(createStarterPosts(stateName))
+      }
+    },
+    (error) => {
+      console.error('State feed could not load:', error)
+      setPosts(createStarterPosts(stateName))
+    }
+  )
+
+  return () => unsubscribe()
+}, [stateId])
+useEffect(() => {
+  if (!router.isReady || !sharedPostId) return
+
+  const foundPost = posts.some(
+    (post) => post.id === sharedPostId
+  )
+
+  if (!foundPost) return
+
+  const timer = window.setTimeout(() => {
+    sharedPostRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    })
+  }, 300)
+
+  return () => window.clearTimeout(timer)
+}, [router.isReady, sharedPostId, posts])
+async function createPost() {
     const trimmedMessage = message.trim()
 
   if (!trimmedMessage && !selectedMediaUrl) {
@@ -140,9 +272,11 @@ const [showMediaEditor, setShowMediaEditor] = useState(false)
 }
 const newPost: FeedPost = {
       id: `${Date.now()}`,
-      author: 'You',
-      initials: 'YOU',
-      role: `${stateName} Sports Family`,
+      authorId: currentUser.uid,
+author: feedUserName,
+initials: feedUserInitials || currentUser.initials,
+photoURL: feedUserPhoto || undefined,
+     role: profileRole || `${stateName} Sports Family`, 
       message: trimmedMessage,
       type: postType,
       createdAt: 'Just now',
@@ -152,49 +286,115 @@ const newPost: FeedPost = {
       mediaUrl: selectedMediaUrl || undefined,
     }
 
-    setPosts((currentPosts) => [newPost, ...currentPosts])
+    const stateFeedId = stateId
+
+try {
+  await addDoc(
+    collection(db, 'stateFeeds', stateFeedId, 'posts'),
+    {
+      authorId: newPost.authorId || '',
+      author: newPost.author,
+      initials: newPost.initials,
+      photoURL: newPost.photoURL || '',
+      role: newPost.role,
+      message: newPost.message,
+      type: newPost.type,
+      createdAt: newPost.createdAt,
+      createdAtMs: Date.now(),
+      likes: 0,
+      comments: [],
+      mediaUrl: newPost.mediaUrl || '',
+    }
+  )
+} catch (error) {
+  console.error('Post could not be published:', error)
+  alert('Your post could not be published. Please try again.')
+  return
+}
     setMessage('')
     setPostType('Update')
     setSelectedMediaUrl('')
 setSelectedFileName('')
   }
 
-  function toggleLike(postId: string) {
-    setPosts((currentPosts) =>
-      currentPosts.map((post) => {
-        if (post.id !== postId) {
-          return post
-        }
+  async function toggleLike(postId: string) {
+  const targetPost = posts.find((post) => post.id === postId)
 
-        return {
-          ...post,
-          liked: !post.liked,
-          likes: post.liked ? Math.max(0, post.likes - 1) : post.likes + 1,
-        }
-      })
-    )
+  if (!targetPost) return
+
+  const nextLiked = !targetPost.liked
+
+  setPosts((currentPosts) =>
+    currentPosts.map((post) => {
+      if (post.id !== postId) {
+        return post
+      }
+
+      return {
+        ...post,
+        liked: nextLiked,
+        likes: Math.max(
+          0,
+          post.likes + (nextLiked ? 1 : -1)
+        ),
+      }
+    })
+  )
+
+  if (postId.startsWith('starter-')) {
+    return
   }
 
-  function addComment(postId: string) {
-    const newComment = commentText[postId]?.trim()
+  const stateFeedId = stateId
 
-    if (!newComment) {
-      return
-    }
+  try {
+    const postRef = doc(
+      db,
+      'stateFeeds',
+      stateFeedId,
+      'posts',
+      postId
+    )
 
+    await updateDoc(postRef, {
+      likes: increment(nextLiked ? 1 : -1),
+    })
+  } catch (error) {
+    console.error('Like could not be updated:', error)
+  }
+}
+
+  async function addComment(postId: string) {
+  const message = commentText[postId]?.trim()
+
+  if (!message) return
+
+  if (!currentUser.uid) {
+    alert('Please sign in to comment.')
+    return
+  }
+if (postingComment[postId]) return
+
+setPostingComment((current) => ({
+  ...current,
+  [postId]: true,
+}))
+  const newComment: Comment = {
+  id: `${Date.now()}`,
+  authorId: currentUser.uid,
+  author: feedUserName,
+  photoURL: feedUserPhoto || undefined,
+  message,
+}
+
+  // Starter/demo posts stay local
+  if (postId.startsWith('starter-')) {
     setPosts((currentPosts) =>
       currentPosts.map((post) =>
         post.id === postId
           ? {
               ...post,
-              comments: [
-                ...post.comments,
-                {
-                  id: `${Date.now()}`,
-                  author: 'You',
-                  message: newComment,
-                },
-              ],
+              comments: [...post.comments, newComment],
             }
           : post
       )
@@ -205,17 +405,82 @@ setSelectedFileName('')
       [postId]: '',
     }))
 
-    setShowComments((current) => ({
-      ...current,
-      [postId]: true,
-    }))
+    return
   }
 
-  function deletePost(postId: string) {
+  const stateFeedId = stateId
+
+  try {
+    const postRef = doc(
+      db,
+      'stateFeeds',
+      stateFeedId,
+      'posts',
+      postId
+    )
+
+    await updateDoc(postRef, {
+      comments: arrayUnion(newComment),
+    })
+
+    setCommentText((current) => ({
+      ...current,
+      [postId]: '',
+    }))
+  } catch (error) {
+  console.error('Comment could not be posted:', error)
+  alert('Your comment could not be posted. Please try again.')
+} finally {
+  setPostingComment((current) => ({
+    ...current,
+    [postId]: false,
+  }))
+}
+}
+  
+
+    
+
+  async function deletePost(postId: string) {
+  if (postId.startsWith('starter-')) {
     setPosts((currentPosts) =>
       currentPosts.filter((post) => post.id !== postId)
     )
+    return
   }
+
+  const targetPost = posts.find((post) => post.id === postId)
+
+  if (!targetPost) return
+
+  if (targetPost.authorId !== currentUser.uid) {
+    alert('You can only delete your own posts.')
+    return
+  }
+
+  const confirmed = window.confirm(
+    'Are you sure you want to delete this post?'
+  )
+
+  if (!confirmed) return
+
+  const stateFeedId = stateId
+
+  try {
+    const postRef = doc(
+      db,
+      'stateFeeds',
+      stateFeedId,
+      'posts',
+      postId
+    )
+
+    await deleteDoc(postRef)
+  } catch (error) {
+    console.error('Post could not be deleted:', error)
+    alert('The post could not be deleted. Please try again.')
+  }
+}
 
   return (
     <>
@@ -228,6 +493,9 @@ setSelectedFileName('')
       setSelectedMediaUrl('')
       setSelectedFileName('')
       setPostType('Update')
+    }}
+    onSave={() => {
+      setShowMediaEditor(false)
     }}
     onNext={() => {
       setShowMediaEditor(false)
@@ -312,7 +580,22 @@ setSelectedFileName('')
 
       <div className="composer">
         <div className="composerTop">
-          <div className="composerAvatar">YOU</div>
+          <div className="composerAvatar">
+  {feedUserPhoto ? (
+    <img
+      src={feedUserPhoto}
+      alt={feedUserName}
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: '50%',
+        objectFit: 'cover',
+      }}
+    />
+  ) : (
+    feedUserInitials || currentUser.initials
+  )}
+</div>
 
           <textarea
             value={message}
@@ -382,17 +665,42 @@ setSelectedFileName('')
 
       <div className="feedList">
         {posts.map((post) => (
-          <article key={post.id} className="feedPost">
+          <article
+  key={post.id}
+  ref={post.id === sharedPostId ? sharedPostRef : null}
+  className={`feedPost ${
+    post.id === sharedPostId ? 'sharedPostHighlight' : ''
+  }`}
+>
+
             <div className="postHeader">
-  <div className="postIdentity">
+  <div
+  className="postIdentity"
+  onClick={() => {
+    if (post.authorId) {
+      router.push(`/athletes/${post.authorId}`)
+    }
+  }}
+  style={{
+    cursor: post.authorId ? 'pointer' : 'default',
+  }}
+>
     <div className="postAvatar">
-      {post.author
-        .split(' ')
-        .map((name) => name.charAt(0))
-        .join('')
-        .slice(0, 2)
-        .toUpperCase()}
-    </div>
+  {post.photoURL ? (
+    <img
+      src={post.photoURL}
+      alt={post.author}
+      style={{
+        width: '100%',
+        height: '100%',
+        borderRadius: '50%',
+        objectFit: 'cover',
+      }}
+    />
+  ) : (
+    post.initials
+  )}
+</div>
 
     <div className="postAuthorInfo">
       <div className="postAuthorRow">
@@ -418,7 +726,7 @@ setSelectedFileName('')
               <div className="postMeta">
                 <span>{post.createdAt}</span>
 
-                {post.author === 'You' && (
+                {post.authorId === currentUser.uid && (
                   <button
                     type="button"
                     onClick={() => deletePost(post.id)}
@@ -431,12 +739,60 @@ setSelectedFileName('')
             </div>
 
             <p className="postMessage">{post.message}</p>
+            {post.activityType === 'arena_join' && post.roomId && (
+  <button
+    type="button"
+    onClick={(event) => {
+  event.stopPropagation()
+  router.push(`/live/${post.streamId}`)
+}}
+    className="arenaActivityButton"
+  >
+    🎮 Enter Arena Room
+  </button>
+)}
+{post.activityType === 'live_now' && post.streamId && (
+  <button
+    type="button"
+    onClick={() => router.push(`/live/${post.streamId}`)}
+    className="liveActivityButton"
+  >
+    🔴 Watch Live
+  </button>
+)}
+{post.activityType === 'live_replay' && post.streamId && (
+  <button
+    type="button"
+    onClick={() => router.push(`/live/${post.streamId}`)}
+    className="replayActivityButton"
+  >
+    ▶️ Watch Replay
+  </button>
+)}
 {post.type === 'Photo' && post.mediaUrl && (
   <img
     src={post.mediaUrl}
     alt={post.message || 'Uploaded sports photo'}
     className="uploadedPostImage"
   />
+)}
+{post.activityType === 'live_scheduled' && post.streamId && (
+  <button
+    type="button"
+    onClick={() => router.push(`/live/${post.streamId}`)}
+    className="scheduledLiveButton"
+  >
+    📅 View Scheduled Stream
+  </button>
+)}
+{post.activityType === 'live_replay' && post.streamId && (
+  <button
+    type="button"
+    onClick={() => router.push(`/live/${post.streamId}`)}
+    className="replayActivityButton"
+  >
+    ▶️ Watch Replay
+  </button>
 )}
       {post.type === 'Video' && post.mediaUrl && (
   <video
@@ -461,52 +817,102 @@ setSelectedFileName('')
               <button
                 type="button"
                 className={post.liked ? 'likedButton' : ''}
-                onClick={() => toggleLike(post.id)}
+                onClick={(event) => {
+  event.stopPropagation()
+  toggleLike(post.id)
+}}
               >
                 {post.liked ? '❤️ Liked' : '♡ Like'}
               </button>
 
               <button
                 type="button"
-                onClick={() =>
-                  setShowComments((current) => ({
+                onClick={(event) => {
+  event.stopPropagation()
+
+  setShowComments((current) => ({
                     ...current,
                     [post.id]: !current[post.id],
                   }))
-                }
+                }}
               >
                 💬 Comment
               </button>
 
+
               <button
-                type="button"
-                onClick={() =>
-                  navigator.clipboard
-                    ?.writeText(
-                      `${post.author}: ${post.message} — My High School Sports Family`
-                    )
-                    .catch(() => undefined)
-                }
-              >
-                ↗ Share
-              </button>
+  type="button"
+  onClick={async () => {
+    const stateSlug = stateName
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+
+    const postUrl =
+      typeof window !== 'undefined'
+        ? `${window.location.origin}/states/${stateSlug}?post=${post.id}`
+        : ''
+
+    const shareText =
+      `${post.author}: ${post.message} — My High School Sports Family`
+
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${stateName} Sports Family`,
+          text: shareText,
+          url: postUrl,
+        })
+      } else {
+        await navigator.clipboard.writeText(
+          `${shareText}\n${postUrl}`
+        )
+
+        alert('Post link copied!')
+      }
+    } catch (error) {
+      console.error('Share failed:', error)
+    }
+  }}
+>
+  ↗ Share
+</button>
             </div>
 
             {showComments[post.id] && (
               <div className="commentsSection">
                 {post.comments.map((comment) => (
                   <div key={comment.id} className="comment">
-                    <div>{comment.author.charAt(0).toUpperCase()}</div>
+  <div>{comment.author.charAt(0).toUpperCase()}</div>
 
-                    <p>
-                      <strong>{comment.author}</strong>
-                      <span>{comment.message}</span>
-                    </p>
-                  </div>
+  <p>
+    <strong>{comment.author}</strong>
+    <span>{comment.message}</span>
+  </p>
+</div>
                 ))}
 
-                <div className="commentComposer">
-                  <input
+                <div
+  className="commentComposer"
+  onClick={(event) => event.stopPropagation()}
+>
+  <div className="commentAvatar">
+    {feedUserPhoto ? (
+      <img
+        src={feedUserPhoto}
+        alt={feedUserName}
+        style={{
+          width: '100%',
+          height: '100%',
+          borderRadius: '50%',
+          objectFit: 'cover',
+        }}
+      />
+    ) : (
+      feedUserInitials || currentUser.initials
+    )}
+  </div>
+
+  <input
                     value={commentText[post.id] ?? ''}
                     placeholder="Write a comment..."
                     onChange={(event) =>
@@ -516,18 +922,30 @@ setSelectedFileName('')
                       }))
                     }
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter') {
-                        addComment(post.id)
-                      }
-                    }}
+  if (
+    event.key === 'Enter' &&
+    !postingComment[post.id] &&
+    (commentText[post.id] ?? '').trim()
+  ) {
+    event.preventDefault()
+    addComment(post.id)
+  }
+}}
                   />
 
                   <button
-                    type="button"
-                    onClick={() => addComment(post.id)}
-                  >
-                    Post
-                  </button>
+  type="button"
+  onClick={(event) => {
+  event.stopPropagation()
+  addComment(post.id)
+}}
+  disabled={
+    postingComment[post.id] ||
+    !(commentText[post.id] ?? '').trim()
+  }
+>
+  {postingComment[post.id] ? 'Posting...' : 'Post'}
+</button>
                 </div>
               </div>
             )}
@@ -544,6 +962,37 @@ setSelectedFileName('')
           background: #f8fafc;
         }
 
+          .replayActivityButton {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.sharedPostHighlight {
+  outline: 3px solid rgba(239, 68, 68, 0.9);
+  outline-offset: 3px;
+  animation: sharedPostPulse 1.5s ease-in-out 2;
+}
+.arenaActivityButton {
+  margin-top: 12px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+@keyframes sharedPostPulse {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.01);
+  }
+}
         .feedHeader {
           display: flex;
           align-items: flex-start;

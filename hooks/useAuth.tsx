@@ -7,17 +7,38 @@ export function useAuth() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!auth) {
-      setLoading(false)
-      return
-    }
+  if (!auth) {
+    setUser(null)
+    setLoading(false)
+    return
+  }
 
-    const unsub = onAuthStateChanged(auth, (u) => {
-      setUser(u)
+  const loadingTimeout = window.setTimeout(() => {
+    console.warn("Firebase auth listener timed out")
+    setUser(auth.currentUser)
+    setLoading(false)
+  }, 5000)
+
+  const unsub = onAuthStateChanged(
+    auth,
+    (firebaseUser) => {
+      window.clearTimeout(loadingTimeout)
+      setUser(firebaseUser)
       setLoading(false)
-    })
-    return () => unsub()
-  }, [])
+    },
+    (error) => {
+      window.clearTimeout(loadingTimeout)
+      console.error("Firebase auth listener error:", error)
+      setUser(null)
+      setLoading(false)
+    }
+  )
+
+  return () => {
+    window.clearTimeout(loadingTimeout)
+    unsub()
+  }
+}, [])
 
   return { user, loading }
 }

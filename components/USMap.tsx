@@ -1,92 +1,403 @@
-import React, { useMemo, useState } from 'react'
-import { useRouter } from 'next/router'
+import React, { useRef, useState } from "react";
+import { useRouter } from "next/router";
+import {
+  ComposableMap,
+  Geographies,
+  Geography,
+} from "react-simple-maps";
 
-type StatePoint = {
-  name: string
-  abbr: string
-  slug: string
-  x: number
-  y: number
-  activity?: number
-}
+const GEO_URL =
+  "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
-const STATES: StatePoint[] = [
-  { name:'Washington',abbr:'WA',slug:'wa',x:116,y:91 },{ name:'Oregon',abbr:'OR',slug:'or',x:105,y:139 },{ name:'California',abbr:'CA',slug:'ca',x:102,y:220,activity:84 },
-  { name:'Idaho',abbr:'ID',slug:'id',x:164,y:132 },{ name:'Nevada',abbr:'NV',slug:'nv',x:151,y:203 },{ name:'Arizona',abbr:'AZ',slug:'az',x:194,y:283 },
-  { name:'Montana',abbr:'MT',slug:'mt',x:247,y:105 },{ name:'Wyoming',abbr:'WY',slug:'wy',x:258,y:169 },{ name:'Utah',abbr:'UT',slug:'ut',x:216,y:221 },
-  { name:'Colorado',abbr:'CO',slug:'co',x:301,y:230,activity:64 },{ name:'New Mexico',abbr:'NM',slug:'nm',x:280,y:300 },
-  { name:'North Dakota',abbr:'ND',slug:'nd',x:367,y:110 },{ name:'South Dakota',abbr:'SD',slug:'sd',x:369,y:166 },{ name:'Nebraska',abbr:'NE',slug:'ne',x:384,y:217 },
-  { name:'Kansas',abbr:'KS',slug:'ks',x:389,y:273 },{ name:'Oklahoma',abbr:'OK',slug:'ok',x:409,y:326 },{ name:'Texas',abbr:'TX',slug:'tx',x:388,y:390,activity:96 },
-  { name:'Minnesota',abbr:'MN',slug:'mn',x:462,y:115 },{ name:'Iowa',abbr:'IA',slug:'ia',x:469,y:193 },{ name:'Missouri',abbr:'MO',slug:'mo',x:487,y:255 },
-  { name:'Arkansas',abbr:'AR',slug:'ar',x:482,y:315 },{ name:'Louisiana',abbr:'LA',slug:'la',x:493,y:373 },
-  { name:'Wisconsin',abbr:'WI',slug:'wi',x:526,y:147 },{ name:'Illinois',abbr:'IL',slug:'il',x:548,y:226 },{ name:'Michigan',abbr:'MI',slug:'mi',x:602,y:151,activity:70 },
-  { name:'Indiana',abbr:'IN',slug:'in',x:594,y:229 },{ name:'Ohio',abbr:'OH',slug:'oh',x:646,y:219,activity:72 },{ name:'Kentucky',abbr:'KY',slug:'ky',x:605,y:276 },
-  { name:'Tennessee',abbr:'TN',slug:'tn',x:611,y:316 },{ name:'Mississippi',abbr:'MS',slug:'ms',x:549,y:363 },{ name:'Alabama',abbr:'AL',slug:'al',x:607,y:360,activity:66 },
-  { name:'Georgia',abbr:'GA',slug:'ga',x:668,y:357,activity:79 },{ name:'Florida',abbr:'FL',slug:'fl',x:720,y:415,activity:88 },
-  { name:'West Virginia',abbr:'WV',slug:'wv',x:690,y:264 },{ name:'Virginia',abbr:'VA',slug:'va',x:745,y:278 },{ name:'North Carolina',abbr:'NC',slug:'nc',x:756,y:319,activity:75 },
-  { name:'South Carolina',abbr:'SC',slug:'sc',x:711,y:352 },{ name:'Pennsylvania',abbr:'PA',slug:'pa',x:735,y:213,activity:68 },
-  { name:'New York',abbr:'NY',slug:'ny',x:788,y:165 },{ name:'Vermont',abbr:'VT',slug:'vt',x:818,y:121 },{ name:'New Hampshire',abbr:'NH',slug:'nh',x:847,y:127 },
-  { name:'Maine',abbr:'ME',slug:'me',x:875,y:84 },{ name:'Massachusetts',abbr:'MA',slug:'ma',x:848,y:173 },{ name:'Rhode Island',abbr:'RI',slug:'ri',x:867,y:190 },
-  { name:'Connecticut',abbr:'CT',slug:'ct',x:829,y:191 },{ name:'New Jersey',abbr:'NJ',slug:'nj',x:790,y:225 },{ name:'Delaware',abbr:'DE',slug:'de',x:800,y:252 },
-  { name:'Maryland',abbr:'MD',slug:'md',x:767,y:248 },{ name:'Alaska',abbr:'AK',slug:'ak',x:138,y:422 },{ name:'Hawaii',abbr:'HI',slug:'hi',x:244,y:442 }
-]
-
-export default function USMap({ height = 470 }: { width?: number; height?: number }) {
-  const router = useRouter()
-  const [selected, setSelected] = useState<StatePoint | null>(null)
-  const [mode, setMode] = useState<'activity'|'community'>('activity')
-
-  const topStates = useMemo(() => [...STATES].sort((a,b) => (b.activity || 35) - (a.activity || 35)).slice(0,4), [])
-  const level = (state: StatePoint) => state.activity || 35
-  const colorFor = (state: StatePoint) => mode === 'community' ? '#2f6bd8' : level(state) >= 85 ? '#ef3340' : level(state) >= 70 ? '#ff7a1a' : level(state) >= 55 ? '#4f8cff' : '#2563a8'
-
-  const openState = (state: StatePoint) => {
-    setSelected(state)
-    router.push(`/states/${state.slug}`)
+const STATE_SLUGS: Record<string, string> = {
+  Alabama: "al",
+  Alaska: "ak",
+  Arizona: "az",
+  Arkansas: "ar",
+  California: "ca",
+  Colorado: "co",
+  Connecticut: "ct",
+  Delaware: "de",
+  Florida: "fl",
+  Georgia: "ga",
+  Hawaii: "hi",
+  Idaho: "id",
+  Illinois: "il",
+  Indiana: "in",
+  Iowa: "ia",
+  Kansas: "ks",
+  Kentucky: "ky",
+  Louisiana: "la",
+  Maine: "me",
+  Maryland: "md",
+  Massachusetts: "ma",
+  Michigan: "mi",
+  Minnesota: "mn",
+  Mississippi: "ms",
+  Missouri: "mo",
+  Montana: "mt",
+  Nebraska: "ne",
+  Nevada: "nv",
+  "New Hampshire": "nh",
+  "New Jersey": "nj",
+  "New Mexico": "nm",
+  "New York": "ny",
+  "North Carolina": "nc",
+  "North Dakota": "nd",
+  Ohio: "oh",
+  Oklahoma: "ok",
+  Oregon: "or",
+  Pennsylvania: "pa",
+  "Rhode Island": "ri",
+  "South Carolina": "sc",
+  "South Dakota": "sd",
+  Tennessee: "tn",
+  Texas: "tx",
+  Utah: "ut",
+  Vermont: "vt",
+  Virginia: "va",
+  Washington: "wa",
+  "West Virginia": "wv",
+  Wisconsin: "wi",
+  Wyoming: "wy",
+};
+const STATE_INFO: Record<
+  string,
+  {
+    athletes: string;
+    schools: string;
+    live: string;
+    sports: string;
+    members: string;
+    followers: string;
   }
+> = {
+  Texas: {
+    athletes: "12,480",
+    schools: "842",
+    live: "326",
+    sports: "🏈 🏀 ⚾ ⚽",
+    members: "48.2K",
+followers: "126K",
+  },
+  California: {
+    athletes: "14,210",
+    schools: "1,020",
+    live: "412",
+    sports: "🏈 🏀 ⚾ 🏐",
+    members: "56.8K",
+followers: "148K",
+  },
+  Florida: {
+    athletes: "10,940",
+    schools: "716",
+    live: "289",
+    sports: "🏈 🏀 ⚾ ⚽",
+    members: "42.5K",
+followers: "119K",
+  },
+  Colorado: {
+    athletes: "6,420",
+    schools: "412",
+    live: "184",
+    sports: "🏈 🏀 ⚾ 🏐",
+    members: "24.7K",
+followers: "68.4K",
+  },
+};
+const STATE_LABELS: Record<
+  string,
+  { abbr: string; x: number; y: number }
+> = {
+  Alabama: { abbr: "AL", x: 568, y: 350 },
+  Alaska: { abbr: "AK", x: 130, y: 430 },
+  Arizona: { abbr: "AZ", x: 180, y: 320 },
+  Arkansas: { abbr: "AR", x: 455, y: 330 },
+  California: { abbr: "CA", x: 105, y: 275 },
+  Colorado: { abbr: "CO", x: 285, y: 255 },
+  Connecticut: { abbr: "CT", x: 700, y: 175 },
+  Delaware: { abbr: "DE", x: 690, y: 245 },
+  Florida: { abbr: "FL", x: 635, y: 425 },
+  Georgia: { abbr: "GA", x: 610, y: 345 },
+  Hawaii: { abbr: "HI", x: 240, y: 450 },
+  Idaho: { abbr: "ID", x: 205, y: 145 },
+  Illinois: { abbr: "IL", x: 505, y: 225 },
+  Indiana: { abbr: "IN", x: 545, y: 225 },
+  Iowa: { abbr: "IA", x: 450, y: 195 },
+  Kansas: { abbr: "KS", x: 365, y: 275 },
+  Kentucky: { abbr: "KY", x: 555, y: 285 },
+  Louisiana: { abbr: "LA", x: 470, y: 390 },
+  Maine: { abbr: "ME", x: 735, y: 95 },
+  Maryland: { abbr: "MD", x: 670, y: 245 },
+  Massachusetts: { abbr: "MA", x: 710, y: 155 },
+  Michigan: { abbr: "MI", x: 555, y: 160 },
+  Minnesota: { abbr: "MN", x: 430, y: 120 },
+  Mississippi: { abbr: "MS", x: 520, y: 355 },
+  Missouri: { abbr: "MO", x: 460, y: 265 },
+  Montana: { abbr: "MT", x: 290, y: 110 },
+  Nebraska: { abbr: "NE", x: 370, y: 215 },
+  Nevada: { abbr: "NV", x: 145, y: 235 },
+  "New Hampshire": { abbr: "NH", x: 715, y: 125 },
+  "New Jersey": { abbr: "NJ", x: 700, y: 215 },
+  "New Mexico": { abbr: "NM", x: 270, y: 335 },
+  "New York": { abbr: "NY", x: 665, y: 155 },
+  "North Carolina": { abbr: "NC", x: 650, y: 305 },
+  "North Dakota": { abbr: "ND", x: 380, y: 115 },
+  Ohio: { abbr: "OH", x: 590, y: 220 },
+  Oklahoma: { abbr: "OK", x: 385, y: 325 },
+  Oregon: { abbr: "OR", x: 130, y: 140 },
+  Pennsylvania: { abbr: "PA", x: 640, y: 205 },
+  "Rhode Island": { abbr: "RI", x: 725, y: 175 },
+  "South Carolina": { abbr: "SC", x: 625, y: 330 },
+  "South Dakota": { abbr: "SD", x: 380, y: 165 },
+  Tennessee: { abbr: "TN", x: 560, y: 315 },
+  Texas: { abbr: "TX", x: 355, y: 375 },
+  Utah: { abbr: "UT", x: 220, y: 235 },
+  Vermont: { abbr: "VT", x: 700, y: 115 },
+  Virginia: { abbr: "VA", x: 640, y: 275 },
+  Washington: { abbr: "WA", x: 135, y: 85 },
+  "West Virginia": { abbr: "WV", x: 620, y: 255 },
+  Wisconsin: { abbr: "WI", x: 490, y: 150 },
+  Wyoming: { abbr: "WY", x: 285, y: 190 },
+};
+export default function USMap({
+  height = 470,
+}: {
+  width?: number;
+  height?: number;
+}) {
+  const router = useRouter();
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+const [hoveredState, setHoveredState] = useState<string | null>(null);
+const [hoverPosition, setHoverPosition] = useState({
+  x: 400,
+  y: 250,
+  containerWidth: 800,
+});
+  const updateHoverPosition = (event: React.MouseEvent<SVGPathElement>) => {
+    const container = mapContainerRef.current;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    setHoverPosition({
+      x: event.clientX - rect.left,
+      y: event.clientY - rect.top,
+      containerWidth: rect.width,
+    });
+  };
+  const cardWidth = Math.min(270, Math.max(0, hoverPosition.containerWidth - 20));
+  const cardLeft = Math.max(
+    10,
+    Math.min(hoverPosition.x + 18, hoverPosition.containerWidth - cardWidth - 10)
+  );
+  const openState = (stateName: string) => {
+    const slug = STATE_SLUGS[stateName];
+
+    if (!slug) return;
+
+    router.push(`/states/${slug}`);
+  };
 
   return (
-    <div className="mhssf-map-shell real-outline-map" style={{ minHeight: height }}>
-      <div className="mhssf-map-topbar">
-        <div><span className="live-dot" /> Interactive national sports map</div>
-        <div className="mhssf-map-mode">
-          <button className={mode === 'activity' ? 'active' : ''} onClick={() => setMode('activity')}>Live activity</button>
-          <button className={mode === 'community' ? 'active' : ''} onClick={() => setMode('community')}>Communities</button>
+    <div
+      ref={mapContainerRef}
+      style={{
+        width: "100%",
+        minHeight: height,
+        background: "transparent",
+        position: "relative",
+      }}
+    >
+      <ComposableMap
+        projection="geoAlbersUsa"
+        projectionConfig={{
+          scale: 990,
+        }}
+        width={800}
+        height={500}
+        style={{
+          width: "100%",
+          height: "100%",
+          display: "block",
+          background: "transparent",
+        }}
+      >
+       <defs>
+  <linearGradient id="terrainGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+    <stop offset="0%" stopColor="#9a7445" />
+    <stop offset="28%" stopColor="#b38b55" />
+    <stop offset="48%" stopColor="#71834a" />
+    <stop offset="68%" stopColor="#3f7137" />
+    <stop offset="100%" stopColor="#244f2d" />
+  </linearGradient>
+
+  <filter id="terrainTexture">
+    <feTurbulence
+      type="fractalNoise"
+      baseFrequency="0.025"
+      numOctaves="4"
+      seed="7"
+      result="noise"
+    />
+    <feColorMatrix
+      in="noise"
+      type="saturate"
+      values="0.4"
+      result="texture"
+    />
+    <feBlend
+      in="SourceGraphic"
+      in2="texture"
+      mode="soft-light"
+    />
+  </filter>
+</defs>
+        <Geographies geography={GEO_URL}>
+          {({ geographies }) =>
+            geographies.map((geo) => {
+              const stateName = geo.properties.name;
+              const isState = Boolean(STATE_SLUGS[stateName]);
+
+              if (!isState) return null;
+
+              return (
+                <Geography
+                  key={geo.rsmKey}
+                  geography={geo}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Open ${stateName} Sports Family`}
+                  onClick={() => openState(stateName)}
+onMouseEnter={(event) => {
+  setHoveredState(stateName);
+  updateHoverPosition(event);
+}}
+onMouseMove={updateHoverPosition}
+onMouseLeave={() => setHoveredState(null)}  
+onFocus={() => setHoveredState(stateName)}
+onBlur={() => setHoveredState(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openState(stateName);
+                    }
+                  }}
+                 style={{
+  default: {
+  fill: stateName === "California" ||
+        stateName === "Nevada" ||
+        stateName === "Arizona" ||
+        stateName === "New Mexico" ||
+        stateName === "Utah"
+    ? "#8b6b45"
+    : stateName === "Colorado" ||
+      stateName === "Wyoming" ||
+      stateName === "Montana" ||
+      stateName === "Idaho"
+    ? "#6f7b45"
+    : "#315f33",
+  stroke: "#ffffff",
+  strokeWidth: 0.8,
+  outline: "none",
+  cursor: "pointer",
+},
+  hover: {
+    fill: "rgba(47,107,216,0.35)",
+    stroke: "#ffffff",
+    strokeWidth: 1.1,
+    outline: "none",
+    cursor: "pointer",
+  },
+  pressed: {
+    fill: "rgba(220,38,38,0.45)",
+    stroke: "#ffffff",
+    strokeWidth: 1.1,
+    outline: "none",
+    cursor: "pointer",
+  },
+}}
+                />
+              );
+            })
+          }
+        </Geographies>
+      
+      </ComposableMap>
+      {hoveredState && (
+  <div
+  className="absolute z-30 w-[270px] rounded-2xl border border-white/20 bg-[#07111f]/95 p-4 text-white shadow-2xl backdrop-blur-md"
+  style={{
+    left: cardLeft,
+    maxWidth: "calc(100% - 20px)",
+    top: Math.max(hoverPosition.y - 80, 10),
+    pointerEvents: "auto",
+  }}
+  onMouseEnter={() => setHoveredState(hoveredState)}
+  onMouseLeave={() => setHoveredState(null)}
+>
+    <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-400">
+      Sports Family
+    </div>
+
+    <div className="mt-1 text-xl font-black">
+      {hoveredState}
+    </div>
+
+    <div className="mt-2 text-lg">
+      {STATE_INFO[hoveredState]?.sports ?? "🏈 🏀 ⚾ 🏐"}
+    </div>
+
+    <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+      <div>
+        <div className="font-black">
+          {STATE_INFO[hoveredState]?.athletes ?? "5,000+"}
+        </div>
+        <div className="text-[10px] text-white/60">
+          Athletes
         </div>
       </div>
 
-      <svg className="mhssf-state-map" viewBox="35 35 880 450" role="img" aria-label="Clickable map of all 50 United States sports communities">
-        <defs>
-          <linearGradient id="mapLand" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#5c694e"/><stop offset=".45" stopColor="#324b4b"/><stop offset="1" stopColor="#1b3343"/></linearGradient>
-          <radialGradient id="mapHeat"><stop offset="0" stopColor="#ef3340" stopOpacity=".75"/><stop offset="1" stopColor="#ef3340" stopOpacity="0"/></radialGradient>
-          <filter id="mapShadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="8" stdDeviation="9" floodColor="#020617" floodOpacity=".6"/></filter>
-        </defs>
-
-        <path className="real-country-shape" filter="url(#mapShadow)" d="M77 153 L96 105 L143 79 L204 82 L258 66 L321 78 L371 68 L423 83 L468 91 L511 82 L556 102 L604 104 L646 122 L684 126 L718 144 L758 151 L793 171 L824 187 L853 218 L842 243 L812 252 L793 274 L769 286 L748 309 L717 320 L693 343 L660 353 L643 379 L611 386 L586 374 L558 384 L529 369 L503 377 L479 354 L452 358 L426 342 L395 343 L367 320 L337 323 L313 300 L283 300 L257 279 L229 274 L209 249 L181 242 L163 219 L137 211 L119 188 L95 181 Z"/>
-        <path className="real-country-shape alaska" d="M91 396 L135 377 L181 388 L191 414 L161 431 L118 425 Z"/>
-        <path className="real-country-shape hawaii" d="M215 423 l16 -6 l12 8 l-13 9 z M244 435 l13 -5 l10 7 l-10 8 z M275 444 l10 -3 l7 6 l-8 6 z"/>
-
-        <g className="state-boundaries">
-          <path d="M144 82 L163 219 M205 82 L209 249 M258 67 L257 279 M321 78 L313 300 M371 69 L367 320 M423 84 L426 342 M468 91 L479 354 M511 83 L529 369 M556 103 L558 384 M604 105 L611 386 M646 123 L643 379 M684 127 L660 353 M718 145 L693 343 M758 152 L717 320"/>
-          <path d="M92 132 L824 187 M83 178 L842 243 M129 218 L793 274 M180 260 L748 309 M252 299 L693 343"/>
-        </g>
-
-        {STATES.map((state) => (
-          <g key={state.abbr} transform={`translate(${state.x} ${state.y})`} className="map-state-point" tabIndex={0} role="button" aria-label={`Open ${state.name} Sports Family`} onClick={() => openState(state)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') openState(state) }} onMouseEnter={() => setSelected(state)} onMouseLeave={() => setSelected(null)}>
-            {level(state) >= 70 && <circle r="25" className="point-heat" />}
-            <circle r={level(state) >= 85 ? 10 : 7} fill={colorFor(state)} />
-            <text y="-13">{state.abbr}</text>
-          </g>
-        ))}
-      </svg>
-
-      <div className="mhssf-map-footer">
-        <div className="mhssf-map-status">
-          <strong>{selected ? `${selected.name} Sports Family` : 'Choose your state'}</strong>
-          <span>{selected ? `${level(selected)}% community activity · Click to enter` : 'Hover over a state marker, then click to enter its community.'}</span>
+      <div>
+        <div className="font-black">
+          {STATE_INFO[hoveredState]?.schools ?? "300+"}
         </div>
-        <div className="mhssf-map-leaders">{topStates.map((state, index) => <span key={state.abbr}><b>{index + 1}</b>{state.abbr}</span>)}</div>
+        <div className="text-[10px] text-white/60">
+          Schools
+        </div>
+      </div>
+
+      <div>
+        <div className="font-black text-red-400">
+          {STATE_INFO[hoveredState]?.live ?? "100+"}
+        </div>
+        <div className="text-[10px] text-white/60">
+          Live
+        </div>
       </div>
     </div>
-  )
+
+   <div className="mt-3 grid grid-cols-2 gap-2 border-t border-white/10 pt-3">
+  <button
+    type="button"
+    onClick={() => openState(hoveredState)}
+    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white transition hover:bg-blue-500"
+  >
+    View Community
+  </button>
+
+  <button
+    type="button"
+    onClick={() =>
+      router.push(`/live?state=${STATE_SLUGS[hoveredState]}`)
+    }
+    className="rounded-lg border border-red-500/60 bg-red-500/10 px-3 py-2 text-xs font-black text-red-300 transition hover:bg-red-500/20"
+  >
+    Live Games
+    </button>
+    </div>
+    </div>
+      )}
+
+      </div>
+  );
 }

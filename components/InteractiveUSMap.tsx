@@ -14,152 +14,83 @@ type StateActivity = {
   y: number
 }
 
-const states: StateActivity[] = [
-  {
-    id: 'wa',
-    name: 'Washington',
-    abbreviation: 'WA',
-    playersOnline: 148,
-    liveRooms: 12,
-    topGame: 'Madden NFL',
-    topPlayer: 'NorthwestKing',
-    rank: 12,
-    x: 90,
-    y: 58,
-  },
-  {
-    id: 'ca',
-    name: 'California',
-    abbreviation: 'CA',
-    playersOnline: 391,
-    liveRooms: 37,
-    topGame: 'NBA 2K',
-    topPlayer: 'WestCoastBuckets',
-    rank: 2,
-    x: 82,
-    y: 185,
-  },
-  {
-    id: 'az',
-    name: 'Arizona',
-    abbreviation: 'AZ',
-    playersOnline: 174,
-    liveRooms: 15,
-    topGame: 'NBA 2K',
-    topPlayer: 'DesertHandles',
-    rank: 10,
-    x: 160,
-    y: 238,
-  },
-  {
-    id: 'co',
-    name: 'Colorado',
-    abbreviation: 'CO',
-    playersOnline: 187,
-    liveRooms: 19,
-    topGame: 'EA Sports College Football 27',
-    topPlayer: 'MileHighQB',
-    rank: 7,
-    x: 255,
-    y: 178,
-  },
-  {
-    id: 'tx',
-    name: 'Texas',
-    abbreviation: 'TX',
-    playersOnline: 482,
-    liveRooms: 44,
-    topGame: 'EA Sports College Football 27',
-    topPlayer: 'LoneStarQB',
-    rank: 1,
-    x: 315,
-    y: 285,
-  },
-  {
-    id: 'mn',
-    name: 'Minnesota',
-    abbreviation: 'MN',
-    playersOnline: 132,
-    liveRooms: 11,
-    topGame: 'NHL',
-    topPlayer: 'NorthStarGamer',
-    rank: 15,
-    x: 410,
-    y: 95,
-  },
-  {
-    id: 'mi',
-    name: 'Michigan',
-    abbreviation: 'MI',
-    playersOnline: 236,
-    liveRooms: 22,
-    topGame: 'Madden NFL',
-    topPlayer: 'WolverineElite',
-    rank: 6,
-    x: 515,
-    y: 125,
-  },
-  {
-    id: 'oh',
-    name: 'Ohio',
-    abbreviation: 'OH',
-    playersOnline: 255,
-    liveRooms: 24,
-    topGame: 'Madden NFL',
-    topPlayer: 'BuckeyeKing',
-    rank: 5,
-    x: 552,
-    y: 160,
-  },
-  {
-    id: 'ga',
-    name: 'Georgia',
-    abbreviation: 'GA',
-    playersOnline: 312,
-    liveRooms: 29,
-    topGame: 'MLB The Show',
-    topPlayer: 'PeachStateSlugger',
-    rank: 4,
-    x: 565,
-    y: 270,
-  },
-  {
-    id: 'fl',
-    name: 'Florida',
-    abbreviation: 'FL',
-    playersOnline: 355,
-    liveRooms: 34,
-    topGame: 'EA Sports College Football 27',
-    topPlayer: 'SunshineAce',
-    rank: 3,
-    x: 620,
-    y: 330,
-  },
-  {
-    id: 'ny',
-    name: 'New York',
-    abbreviation: 'NY',
-    playersOnline: 221,
-    liveRooms: 20,
-    topGame: 'NBA 2K',
-    topPlayer: 'EmpireBuckets',
-    rank: 8,
-    x: 665,
-    y: 105,
-  },
-  {
-    id: 'pa',
-    name: 'Pennsylvania',
-    abbreviation: 'PA',
-    playersOnline: 203,
-    liveRooms: 18,
-    topGame: 'Madden NFL',
-    topPlayer: 'KeystoneKing',
-    rank: 9,
-    x: 635,
-    y: 155,
-  },
+const stateSeeds = [
+  { id: 'wa', name: 'Washington', abbreviation: 'WA', x: 82, y: 70 },
+  { id: 'or', name: 'Oregon', abbreviation: 'OR', x: 78, y: 113 },
+  { id: 'ca', name: 'California', abbreviation: 'CA', x: 74, y: 176 },
+  { id: 'nv', name: 'Nevada', abbreviation: 'NV', x: 112, y: 165 },
+  { id: 'id', name: 'Idaho', abbreviation: 'ID', x: 125, y: 105 },
+  { id: 'mt', name: 'Montana', abbreviation: 'MT', x: 185, y: 82 },
+  { id: 'wy', name: 'Wyoming', abbreviation: 'WY', x: 190, y: 135 },
+  { id: 'ut', name: 'Utah', abbreviation: 'UT', x: 158, y: 172 },
+  { id: 'az', name: 'Arizona', abbreviation: 'AZ', x: 142, y: 229 },
+  { id: 'co', name: 'Colorado', abbreviation: 'CO', x: 218, y: 177 },
+  { id: 'nm', name: 'New Mexico', abbreviation: 'NM', x: 205, y: 235 },
+
+  { id: 'nd', name: 'North Dakota', abbreviation: 'ND', x: 285, y: 82 },
+  { id: 'sd', name: 'South Dakota', abbreviation: 'SD', x: 286, y: 125 },
+  { id: 'ne', name: 'Nebraska', abbreviation: 'NE', x: 290, y: 165 },
+  { id: 'ks', name: 'Kansas', abbreviation: 'KS', x: 292, y: 205 },
+  { id: 'ok', name: 'Oklahoma', abbreviation: 'OK', x: 300, y: 245 },
+  { id: 'tx', name: 'Texas', abbreviation: 'TX', x: 280, y: 305 },
+
+  { id: 'mn', name: 'Minnesota', abbreviation: 'MN', x: 350, y: 95 },
+  { id: 'ia', name: 'Iowa', abbreviation: 'IA', x: 355, y: 158 },
+  { id: 'mo', name: 'Missouri', abbreviation: 'MO', x: 363, y: 205 },
+  { id: 'ar', name: 'Arkansas', abbreviation: 'AR', x: 365, y: 252 },
+  { id: 'la', name: 'Louisiana', abbreviation: 'LA', x: 374, y: 310 },
+
+  { id: 'wi', name: 'Wisconsin', abbreviation: 'WI', x: 405, y: 112 },
+  { id: 'il', name: 'Illinois', abbreviation: 'IL', x: 415, y: 175 },
+  { id: 'mi', name: 'Michigan', abbreviation: 'MI', x: 460, y: 115 },
+  { id: 'in', name: 'Indiana', abbreviation: 'IN', x: 455, y: 177 },
+  { id: 'oh', name: 'Ohio', abbreviation: 'OH', x: 500, y: 168 },
+
+  { id: 'ky', name: 'Kentucky', abbreviation: 'KY', x: 467, y: 217 },
+  { id: 'tn', name: 'Tennessee', abbreviation: 'TN', x: 475, y: 248 },
+  { id: 'ms', name: 'Mississippi', abbreviation: 'MS', x: 420, y: 290 },
+  { id: 'al', name: 'Alabama', abbreviation: 'AL', x: 465, y: 292 },
+  { id: 'ga', name: 'Georgia', abbreviation: 'GA', x: 515, y: 285 },
+  { id: 'fl', name: 'Florida', abbreviation: 'FL', x: 550, y: 345 },
+
+  { id: 'wv', name: 'West Virginia', abbreviation: 'WV', x: 535, y: 205 },
+  { id: 'va', name: 'Virginia', abbreviation: 'VA', x: 570, y: 215 },
+  { id: 'nc', name: 'North Carolina', abbreviation: 'NC', x: 585, y: 250 },
+  { id: 'sc', name: 'South Carolina', abbreviation: 'SC', x: 550, y: 275 },
+
+  { id: 'pa', name: 'Pennsylvania', abbreviation: 'PA', x: 575, y: 155 },
+  { id: 'ny', name: 'New York', abbreviation: 'NY', x: 610, y: 120 },
+  { id: 'vt', name: 'Vermont', abbreviation: 'VT', x: 625, y: 65 },
+{ id: 'nh', name: 'New Hampshire', abbreviation: 'NH', x: 665, y: 78 },
+{ id: 'me', name: 'Maine', abbreviation: 'ME', x: 710, y: 45 },
+
+{ id: 'ma', name: 'Massachusetts', abbreviation: 'MA', x: 690, y: 115 },
+{ id: 'ri', name: 'Rhode Island', abbreviation: 'RI', x: 710, y: 145 },
+{ id: 'ct', name: 'Connecticut', abbreviation: 'CT', x: 660, y: 145 },
+{ id: 'nj', name: 'New Jersey', abbreviation: 'NJ', x: 625, y: 178 },
+{ id: 'de', name: 'Delaware', abbreviation: 'DE', x: 625, y: 218 },
+{ id: 'md', name: 'Maryland', abbreviation: 'MD', x: 580, y: 205 },
+  { id: 'ak', name: 'Alaska', abbreviation: 'AK', x: 95, y: 335 },
+  { id: 'hi', name: 'Hawaii', abbreviation: 'HI', x: 175, y: 355 },
+] as const
+
+const arenaGames = [
+  'EA Sports College Football',
+  'Madden NFL',
+  'NBA 2K',
+  'MLB The Show',
+  'EA Sports FC',
+  'NHL',
 ]
+
+const states: StateActivity[] = stateSeeds.map((state, index) => ({
+  ...state,
+  playersOnline: 125 + ((index * 37) % 390),
+  liveRooms: 4 + ((index * 7) % 24),
+  topGame: arenaGames[index % arenaGames.length],
+  topPlayer: `${state.abbreviation}Arena${index + 1}`,
+  rank: index + 1,
+}))
 
 const stateShapes = [
   'M38 34 L112 28 L118 82 L53 91 Z',
@@ -196,7 +127,10 @@ export default function InteractiveUSMap() {
   const router = useRouter()
   const [selectedStateId, setSelectedStateId] = useState('tx')
   const [search, setSearch] = useState('')
-
+const handleStateClick = (stateId: string) => {
+  setSelectedStateId(stateId)
+  router.push(`/states/${stateId}`)
+}
   const selectedState =
     states.find((state) => state.id === selectedStateId) ?? states[0]
 
@@ -232,10 +166,46 @@ export default function InteractiveUSMap() {
     if (playersOnline >= 150) return 'activityMedium'
     return 'activityLow'
   }
+  const hottestState = [...states].sort(
+    (a, b) => b.playersOnline - a.playersOnline
+  )[0]
 
+  const mostActiveState = [...states].sort(
+    (a, b) => b.liveRooms - a.liveRooms
+  )[0]
+
+  const topFiveStates = [...states]
+    .sort((a, b) => a.rank - b.rank)
+    .slice(0, 5)
   return (
     <section className="arenaMapSection">
       <div className="mapHeader">
+        <div className="mapStatsGrid">
+  <div className="mapStatCard">
+    <span className="mapStatLabel">Players Online</span>
+    <strong className="mapStatValue">{totalPlayers.toLocaleString()}</strong>
+  </div>
+
+  <div className="mapStatCard">
+    <span className="mapStatLabel">Live Rooms</span>
+    <strong className="mapStatValue">{totalRooms}</strong>
+  </div>
+
+  <div className="mapStatCard">
+    <span className="mapStatLabel">Hottest State</span>
+    <strong className="mapStatValue">
+      {hottestState.name}
+    </strong>
+    <small>{hottestState.playersOnline} online</small>
+  </div>
+
+  <div className="mapStatCard">
+    <span className="mapStatLabel">#1 Ranked State</span>
+    <strong className="mapStatValue">
+      {topFiveStates[0]?.name}
+    </strong>
+  </div>
+</div>
         <div>
           <p className="mapEyebrow">Interactive Arena Map</p>
 
@@ -324,18 +294,15 @@ export default function InteractiveUSMap() {
                 className={`stateMarker ${
                   selectedState.id === state.id ? 'selectedMarker' : ''
                 }`}
-                onClick={() => {
-  setSelectedStateId(state.id)
-  router.push(`/states/${state.id}`)
+               onClick={() => {
+  handleStateClick(state.id)
 }}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    setSelectedStateId(state.id)
-                    router.push(`/states/${state.id}`)
-                  }
-                }}
+onKeyDown={(event) => {
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault()
+    handleStateClick(state.id)
+  }
+}}
                 aria-label={`Select ${state.name}`}
               >
                 <circle
@@ -414,35 +381,26 @@ export default function InteractiveUSMap() {
           </div>
 
           <div className="statePanelButtons">
-            <button
-              type="button"
-              className="openStateButton"
-              onClick={() => router.push(`/states/${selectedState.id}`)}
-            >
-              Open State Page
-            </button>
-
-            <div className="statePanelButtons">
   <button
     type="button"
     className="openStateButton"
-    onClick={() => router.push(`/states/${selectedState.id}`)}
+    onClick={() =>
+  router.push(`/arena/state?state=${selectedState.id}`)
+}
   >
-    Open State Page
+    Enter {selectedState.name} Arena
   </button>
 
   <button
     type="button"
     className="viewRoomsButton"
     onClick={() =>
-      router.push(
-        `/arena?state=${selectedState.id}#live-championships`
-      )
+      router.push(`/states/${selectedState.id}`)
     }
   >
-    View Live Rooms
+    Open {selectedState.name} Community
   </button>
-</div>
+
 </div>
         </aside>
       </div>
@@ -457,10 +415,10 @@ export default function InteractiveUSMap() {
                 <button
                   key={state.id}
                   type="button"
-                  onClick={() => {
-                    setSelectedStateId(state.id)
-                    setSearch('')
-                  }}
+                 onClick={() => {
+  handleStateClick(state.id)
+  setSearch('')
+}}
                 >
                   <span>{state.abbreviation}</span>
 
@@ -487,7 +445,74 @@ export default function InteractiveUSMap() {
           background: #071225;
           color: white;
         }
+.mapStatsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 14px;
+  width: 100%;
+  margin-bottom: 24px;
+}
 
+.mapStatCard {
+  background:
+    linear-gradient(
+      145deg,
+      rgba(15, 23, 42, 0.96),
+      rgba(30, 41, 59, 0.92)
+    );
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 18px;
+  min-height: 110px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    transform 0.2s ease,
+    border-color 0.2s ease;
+}
+
+.mapStatCard:hover {
+  transform: translateY(-3px);
+  border-color: rgba(239, 68, 68, 0.65);
+}
+
+.mapStatLabel {
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.mapStatValue {
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1.1;
+  font-weight: 900;
+}
+
+.mapStatCard small {
+  color: #f87171;
+  font-weight: 700;
+  margin-top: 6px;
+}
+
+@media (max-width: 900px) {
+  .mapStatsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .mapStatsGrid {
+    grid-template-columns: 1fr;
+  }
+}
         .mapHeader {
           display: flex;
           justify-content: space-between;
@@ -604,7 +629,7 @@ export default function InteractiveUSMap() {
 
         .mapLayout {
           display: grid;
-          grid-template-columns: minmax(0, 1.55fr) minmax(285px, 0.7fr);
+          grid-template-columns: minmax(0, 2.15fr) minmax(280px, 0.7fr);
           gap: 22px;
           margin-top: 22px;
         }

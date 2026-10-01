@@ -38,6 +38,15 @@ service cloud.firestore {
       allow read, update, delete: if owns(userId);
       allow create: if signedIn();
     }
+    match /schools/{schoolId} {
+  allow read: if true;
+  allow write: if false;
+}
+
+match /cities/{cityId} {
+  allow read: if true;
+  allow write: if false;
+}
     match /{document=**} { allow read, write: if false; }
   }
 }

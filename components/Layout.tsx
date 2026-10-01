@@ -1,8 +1,9 @@
-import React from 'react'
+import React, { useEffect, useState } from "react"
 import Head from 'next/head'
 import Link from 'next/link'
 import { useTheme } from 'next-themes'
 import { useAuth } from '../hooks/useAuth'
+
 
 const navItems = [
   ['Home', '/'],
@@ -15,7 +16,11 @@ const navItems = [
 
 const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { theme, setTheme } = useTheme()
+const [mounted, setMounted] = useState(false)
 
+useEffect(() => {
+  setMounted(true)
+}, [])
   return (
     <div className="min-h-screen bg-app">
       <Head>
@@ -27,7 +32,11 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/90 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/90">
         <div className="site-shell flex h-16 items-center justify-between gap-4">
           <Link href="/" className="flex min-w-0 items-center gap-3">
-            <div className="brand-mark">M</div>
+            <img
+  src="/mhssf-logo.png"
+  alt="My High School Sports Family"
+  className="h-16 w-16 rounded-full object-contain"
+/>
             <div className="min-w-0">
               <div className="truncate text-sm font-black tracking-tight text-slate-950 dark:text-white sm:text-base">MY HIGH SCHOOL SPORTS FAMILY</div>
               <div className="hidden text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 sm:block">One nation. Every athlete. One family.</div>
@@ -41,14 +50,29 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </nav>
 
           <div className="flex items-center gap-2">
-            <button
-              aria-label="Toggle color theme"
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-              className="icon-button"
-            >
-              {theme === 'dark' ? '☀' : '☾'}
-            </button>
+            {mounted && (
+  <button
+    type="button"
+    aria-label="Toggle color theme"
+    onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+    className="icon-button"
+  >
+    {theme === "dark" ? "☀️" : "🌙"}
+  </button>
+)}
             <UserMenu />
+            <details className="relative lg:hidden">
+  <summary className="cursor-pointer list-none rounded-lg border px-3 py-2 font-bold">
+    Menu
+  </summary>
+  <nav className="absolute right-0 top-full z-[60] mt-2 flex w-52 flex-col rounded-xl border bg-white p-2 shadow-xl dark:bg-slate-900">
+    {navItems.map(([label, href]) => (
+      <Link key={href} href={href} className="rounded-lg px-3 py-2 hover:bg-slate-100 dark:hover:bg-slate-800">
+        {label}
+      </Link>
+    ))}
+  </nav>
+</details>
           </div>
         </div>
       </header>

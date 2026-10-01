@@ -4,12 +4,13 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   updateProfile,
-  signOut as firebaseSignOut
+  signOut as firebaseSignOut,
+  browserSessionPersistence,
+
 } from 'firebase/auth'
 import { auth, db } from './firebase'
 import { doc, setDoc, serverTimestamp, getDoc } from 'firebase/firestore'
 import { UserProfile } from '../types/user'
-
 const defaultUserProfile = (uid: string, displayName: string, role: UserProfile['role'], extra: Partial<UserProfile> = {}): UserProfile => ({
   id: uid,
   displayName,
@@ -40,10 +41,48 @@ export async function signUpWithEmail({ email, password, displayName, role = 'at
   return userCred.user
 }
 
-export async function signInWithEmail({ email, password }: { email: string; password: string }) {
-  if (!auth) throw new Error('Firebase is not initialized')
-  const userCred = await signInWithEmailAndPassword(auth, email, password)
+export async function signInWithEmail({
+  email,
+  password,
+}: {
+  email: string
+  password: string
+}) {
+  if (!auth) {
+  throw new Error("Firebase is not initialized")
+}
+
+
+
+try {
+  console.log("Starting Firebase sign-in:", email)
+
+  const signInPromise = signInWithEmailAndPassword(
+  auth,
+  email.trim(),
+  password
+)
+
+const timeoutPromise = new Promise<never>((_, reject) => {
+  window.setTimeout(() => {
+    reject(new Error("Firebase sign-in timed out"))
+  }, 10000)
+})
+
+const userCred = await Promise.race([
+  signInPromise,
+  timeoutPromise,
+])
+console.log("Firebase sign-in completed:", userCred.user.uid)
+
+return userCred.user
+  console.log("Firebase sign-in successful:", userCred.user.uid)
+
   return userCred.user
+} catch (error) {
+  console.error("Firebase sign-in failed:", error)
+  throw error
+}
 }
 
 export async function signInWithGoogle() {

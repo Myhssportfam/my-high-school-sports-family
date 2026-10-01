@@ -16,18 +16,46 @@ export async function fetchCities(stateId: string) {
   return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
 }
 
-export async function fetchSchoolsByState(stateId: string, limitCount = 12) {
+export async function fetchSchoolsByState(
+  stateId: string,
+  limitCount = 12
+) {
   const col = collection(db, 'schools')
-  const q = query(col, where('stateId', '==', stateId), orderBy('followersCount', 'desc'), limit(limitCount))
+  const q = query(col, where('stateId', '==', stateId))
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+
+  return snap.docs
+    .map((d) => ({
+      id: d.id,
+      ...(d.data() as any),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.followersCount ?? 0) -
+        Number(a.followersCount ?? 0)
+    )
+    .slice(0, limitCount)
 }
 
-export async function fetchAthletesByState(stateId: string, limitCount = 12) {
+export async function fetchAthletesByState(
+  stateId: string,
+  limitCount = 12
+) {
   const col = collection(db, 'users')
-  const q = query(col, where('state', '==', stateId), orderBy('followersCount', 'desc'), limit(limitCount))
+  const q = query(col, where('state', '==', stateId))
   const snap = await getDocs(q)
-  return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }))
+
+  return snap.docs
+    .map((d) => ({
+      id: d.id,
+      ...(d.data() as any),
+    }))
+    .sort(
+      (a, b) =>
+        Number(b.followersCount ?? 0) -
+        Number(a.followersCount ?? 0)
+    )
+    .slice(0, limitCount)
 }
 
 export async function fetchSchools(stateId: string, cityId: string) {
