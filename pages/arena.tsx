@@ -25,7 +25,7 @@ import {
   type ArenaLeaderboardPlayer,
 } from "../lib/arenaLive";
 import { leaveArenaRoom } from '../lib/arenaLive'
-import { updateStateArenaRecord } from '../lib/lib/stateRankings'
+import { updateStateArenaRecord } from "../lib/stateRankings"
 type RoomStatus = 'live' | 'open' | 'scheduled' | 'full'
 
 type ArenaRoom = {

@@ -1,4 +1,4 @@
-import { updateStateArenaRecord } from "./lib/stateRankings";
+import { updateStateArenaRecord } from "./stateRankings";
 import {
   addDoc,
   collection,

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { getArenaLeaderboard } from "../lib/arenaLive";
-import { getSortedStateRankings } from "../lib/lib/stateRankings";
+import { getSortedStateRankings } from "../lib/stateRankings";
 
 export default function RankingsPage() {
 const [arenaPlayers, setArenaPlayers] = useState<
