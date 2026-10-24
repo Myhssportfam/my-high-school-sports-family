@@ -107,7 +107,12 @@ export default function LoginPage() {
 
     try {
       setLoading(true);
-      await sendPasswordResetEmail(auth, email.trim());
+      const resetEmail = email.trim().toLowerCase();
+
+await sendPasswordResetEmail(auth, resetEmail, {
+  url: `${window.location.origin}/login?reset=complete`,
+  handleCodeInApp: false,
+});
       setMessage("Password-reset instructions were sent to your email.");
     } catch (resetError: any) {
       if (resetError?.code === "auth/invalid-email") {

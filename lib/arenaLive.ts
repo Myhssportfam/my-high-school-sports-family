@@ -224,91 +224,28 @@ export function subscribeToArenaRoom(
   }, error => onError?.(error))
 }
 
-export async function joinArenaRoom(roomId: string, member: {
-  uid: string
-  displayName: string
-  photoURL?: string
-  state?: string
-}) {
-  if (auth.currentUser?.uid !== member.uid) throw new Error("Sign in to join the room.")
-  const roomRef = doc(db, "arenaRooms", roomId)
-  const memberRef = doc(db, "arenaRooms", roomId, "members", member.uid)
-  await runTransaction(db, async transaction => {
-    const roomSnap = await transaction.get(roomRef)
-    if (!roomSnap.exists()) throw new Error("Room not found.")
-    const room = roomSnap.data()
-    const ids: string[] = room.joinedUserIds || []
-    const existingMember = await transaction.get(memberRef)
-    if (ids.includes(member.uid) && existingMember.exists()) return
-    if (!ids.includes(member.uid) && !["open", "scheduled", "full"].includes(room.status)) throw new Error("This lobby is closed.")
-    if (!ids.includes(member.uid) && (!Number.isInteger(room.maxPlayers) || ids.length >= room.maxPlayers)) throw new Error("This room is full.")
-    const joinedUserIds = ids.includes(member.uid) ? ids : [...ids, member.uid]
-    const participant = {
-      userId: member.uid,
-      displayName: member.displayName || "MHSSF Athlete",
-      state: member.state || "",
-      photoURL: member.photoURL || "",
-      ready: false,
-    }
-    if (!ids.includes(member.uid)) {
-      transaction.update(roomRef, {
-        joinedUserIds,
-        players: joinedUserIds.length,
-        participants: [...(room.participants || []), participant],
-        status: joinedUserIds.length >= room.maxPlayers ? "full" : room.scheduledTime ? "scheduled" : "open",
-      })
-    }
-    transaction.set(memberRef, {
-      uid: member.uid,
-      displayName: participant.displayName,
-      photoURL: participant.photoURL,
-      state: participant.state,
-      ready: false,
-      wins: 0,
-      losses: 0,
-      joinedAt: serverTimestamp(),
-    })
-  })
+async function arenaMembership(action: string, roomId: string, ready?: boolean) {
+  const user = auth.currentUser;
+  if (!user) throw new Error('Sign in to manage Arena membership.');
+  const response = await fetch('/api/arena-membership', {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await user.getIdToken()}` },
+    body: JSON.stringify({ action, roomId, ready }),
+  });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'Could not update Arena membership.');
+  return result;
 }
-
+export async function joinArenaRoom(roomId: string, member: {uid:string;displayName:string;photoURL?:string;state?:string}) {
+  if (auth.currentUser?.uid !== member.uid) throw new Error('Sign in to join this room.');
+  return arenaMembership('join', roomId);
+}
 export async function leaveArenaRoom(roomId: string, uid: string) {
-  if (auth.currentUser?.uid !== uid) throw new Error("Sign in to leave the room.")
-  const roomRef = doc(db, "arenaRooms", roomId)
-  const memberRef = doc(db, "arenaRooms", roomId, "members", uid)
-  await runTransaction(db, async transaction => {
-    const snapshot = await transaction.get(roomRef)
-    if (!snapshot.exists()) throw new Error("Room not found.")
-    const room = snapshot.data()
-    if (!["open", "scheduled", "full"].includes(room.status)) throw new Error("This lobby is closed.")
-    const ids: string[] = room.joinedUserIds || []
-    if (!ids.includes(uid)) return
-    const joinedUserIds = ids.filter(id => id !== uid)
-    transaction.update(roomRef, {
-      joinedUserIds,
-      players: joinedUserIds.length,
-      participants: (room.participants || []).filter((p: any) => p.userId !== uid),
-      status: joinedUserIds.length >= room.maxPlayers ? "full" : room.scheduledTime ? "scheduled" : "open",
-    })
-    transaction.delete(memberRef)
-  })
-  return { success: true, roomId, uid }
+  if (auth.currentUser?.uid !== uid) throw new Error('Sign in to leave this room.');
+  await arenaMembership('leave', roomId); return { success:true, roomId, uid };
 }
-
 export async function setArenaMemberReady(roomId: string, uid: string, ready: boolean) {
-  if (auth.currentUser?.uid !== uid) throw new Error("Sign in to change your ready status.")
-  const roomRef = doc(db, "arenaRooms", roomId)
-  const memberRef = doc(db, "arenaRooms", roomId, "members", uid)
-  await runTransaction(db, async transaction => {
-    const [roomSnap, memberSnap] = await Promise.all([transaction.get(roomRef), transaction.get(memberRef)])
-    const room = roomSnap.data()
-    if (!room || !["open", "scheduled", "full"].includes(room.status) || !room.joinedUserIds?.includes(uid) || !memberSnap.exists()) {
-      throw new Error("Join an open lobby first.")
-    }
-    transaction.update(roomRef, {
-      participants: room.participants.map((p: any) => p.userId === uid ? { ...p, ready } : p),
-    })
-    transaction.update(memberRef, { ready })
-  })
+  if (auth.currentUser?.uid !== uid) throw new Error('Sign in to change your ready status.');
+  return arenaMembership('ready', roomId, ready);
 }
 
 export async function startArenaMatch(roomId: string) {

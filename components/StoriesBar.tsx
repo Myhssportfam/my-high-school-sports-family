@@ -1,25 +1,35 @@
 import { ChangeEvent, useEffect, useRef, useState } from "react"
 import { auth } from "../lib/firebase";
+import { onAuthStateChanged } from "firebase/auth"
 import { uploadMedia } from "../lib/uploadMedia";
+import {deleteContent} from '../lib/deleteContent'
 import {
   createStory,
   recordStoryView,
   subscribeToActiveStories,
+  toggleStoryLike,
 } from "../lib/stories";
 
 type MediaType = "Photo" | "Video"
 
 type Story = {
   id: string
-  firestoreId?: string 
+  userId?: string
+  isUserStory?: boolean
+  firestoreId?: string
+  views?: {
+    userId: string
+    userName: string
+    avatarUrl: string
+    viewedAt: number
+  }[]
   name: string
   sport: string
   emoji: string
-avatarUrl?: string
-  mediaType?: MediaType
+  avatarUrl?: string
   mediaUrl?: string
+  mediaType?: MediaType
   isLive?: boolean
-  isUserStory?: boolean
   linkUrl?: string
 }
 
@@ -88,11 +98,16 @@ export default function StoriesBar({
   uploadStateId,
 }: StoriesBarProps) {
   const [stories, setStories] = useState<Story[]>(defaultStories)
-  const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(
-    null
-  )
+  const [signedInUser, setSignedInUser] = useState(auth.currentUser)
+  useEffect(() => onAuthStateChanged(auth, setSignedInUser), [])
+ const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null)
+const [showViewers, setShowViewers] = useState(false)
+const [deletingStory, setDeletingStory] = useState(false)
   const [storyProgress, setStoryProgress] = useState(0)
   const [isStoryMuted, setIsStoryMuted] = useState(false)
+  const [storyLiked, setStoryLiked] = useState(false)
+const [storyLikeCount, setStoryLikeCount] = useState(0)
+const [storyReply, setStoryReply] = useState("")
 const storyVideoRef = useRef<HTMLVideoElement | null>(null)
   const storyFileInputRef = useRef<HTMLInputElement | null>(null)
   const videoRef = useRef<HTMLVideoElement | null>(null)
@@ -100,6 +115,30 @@ const storyVideoRef = useRef<HTMLVideoElement | null>(null)
 const [storyLinkUrl, setStoryLinkUrl] = useState("")
   const activeStory =
     activeStoryIndex !== null ? stories[activeStoryIndex] : null
+
+  const ownsStory = (story: Story) => Boolean(
+    signedInUser && story.firestoreId && story.userId === signedInUser.uid
+  )
+
+  async function removeStory(story: Story) {
+    if (!ownsStory(story) || deletingStory || !story.firestoreId) return
+    if (!window.confirm('Delete this story?')) return
+    setDeletingStory(true)
+    videoRef.current?.pause()
+    try {
+      await deleteContent({kind: 'story', id: story.firestoreId, stateId})
+      closeStory()
+      setStories((items) => items.flatMap((item) =>
+        item.firestoreId !== story.firestoreId ? [item] :
+        item.id === 'your-story' ? [defaultStories[0]] : []
+      ))
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Could not delete story.')
+      videoRef.current?.play().catch(() => {})
+    } finally {
+      setDeletingStory(false)
+    }
+  }
 
   const openStoryPicker = () => {
     storyFileInputRef.current?.click()
@@ -154,7 +193,7 @@ console.log("Current User:", auth.currentUser);
 console.log("UID:", auth.currentUser?.uid);
       const uploadedMedia = await uploadMedia(file, user.uid);
 
-      await createStory({
+      const savedStory = await createStory({
         stateId: storyStateId,
         userId: user.uid,
         userName:
@@ -167,7 +206,9 @@ console.log("UID:", auth.currentUser?.uid);
       });
 
       uploadedStories.push({
-        id: `user-story-${Date.now()}-${index}`,
+        id: `firebase-story-${savedStory.id}`,
+        firestoreId: savedStory.id,
+        userId: user.uid,
         name: "Your Story",
         sport: isVideo ? "Video" : "Photo",
         emoji: "YOU",
@@ -239,6 +280,7 @@ console.log("UID:", auth.currentUser?.uid);
   }
 
   const showNextStory = () => {
+    if (deletingStory) return
     if (activeStoryIndex === null) {
       return
     }
@@ -255,6 +297,7 @@ setIsStoryMuted(false)
   }
 
   const showPreviousStory = () => {
+    if (deletingStory) return
     if (activeStoryIndex === null) {
       return
     }
@@ -271,7 +314,7 @@ setIsStoryMuted(false)
   }
 
   useEffect(() => {
-    if (!activeStory) {
+    if (!activeStory || deletingStory) {
       return
     }
 
@@ -279,7 +322,7 @@ setIsStoryMuted(false)
 
     
 
-    const duration = 45000
+    const duration = 25000
     const intervalSpeed = 50
     const progressIncrease = (intervalSpeed / duration) * 100
 
@@ -300,7 +343,7 @@ setIsStoryMuted(false)
     return () => {
       window.clearInterval(interval)
     }
-  }, [activeStoryIndex])
+  }, [activeStoryIndex, deletingStory])
 
   useEffect(() => {
     return () => {
@@ -315,6 +358,9 @@ useEffect(() => {
   (firebaseStories) => {
     const loadedStories: Story[] = firebaseStories.map((story) => ({
       id: `firebase-story-${story.id}`,
+      firestoreId: story.id,
+      userId: story.userId,
+      views: story.views || [],
       name: story.userName,
       avatarUrl: story.avatarUrl,
       sport: story.mediaType === "video" ? "Video" : "Photo",
@@ -342,11 +388,35 @@ useEffect(() => {
           !story.id.startsWith("firebase-story-")
       );
 
-      return [
-        ...(yourStoryButton ? [yourStoryButton] : []),
-        ...loadedStories,
-        ...communityStories,
-      ];
+     const otherUsersStories = loadedStories.filter(
+  (story) => story.userId !== auth.currentUser?.uid
+);
+
+const myStories = loadedStories.filter(
+  (story) => story.userId === auth.currentUser?.uid
+);
+
+const updatedYourStoryButton =
+  myStories.length > 0
+    ? {
+        ...myStories[0],
+        id: "your-story",
+        firestoreId: myStories[0].firestoreId,
+        userId: myStories[0].userId,
+        mediaUrl: myStories[0].mediaUrl,
+        mediaType: myStories[0].mediaType,
+        isUserStory: true,
+        name: "Your Story",
+        emoji: "YOU",
+      }
+    : defaultStories[0];
+
+return [
+  ...(updatedYourStoryButton ? [updatedYourStoryButton] : []),
+  ...myStories.slice(1),
+  ...otherUsersStories,
+  ...communityStories,
+];
     });
   });
 
@@ -379,26 +449,56 @@ useEffect(() => {
 
         <div className="flex gap-4 overflow-x-auto pb-2">
           {stories
-  .filter(
-    (story, index, allStories) =>
-      story.id === "your-story" ||
-      !story.isUserStory ||
-      index ===
-        allStories.findIndex(
-          (item) => item.isUserStory && Boolean(item.mediaUrl)
-        )
-  )
-  .map((story) => {
-    const hasMedia = Boolean(story.mediaUrl)
+  .filter((story, index, allStories) => {
+  // Always keep the "Your Story" upload button
+  if (story.id === "your-story") {
+    return true
+  }
 
+  // If this story belongs to an athlete/user,
+  // only show the first story from that person.
+  // Their remaining stories will play after opening the circle.
+  if (story.userId) {
     return (
+      index ===
+      allStories.findIndex(
+        (item) =>
+          item.userId === story.userId &&
+          item.id !== "your-story"
+      )
+    )
+  }
+
+  // Keep other built-in/demo story circles
+  return true
+})
+  .map((story) => {
+  const hasMedia = Boolean(story.mediaUrl)
+
+  console.log("STORY DEBUG:", {
+    id: story.id,
+    firestoreId: story.firestoreId,
+    userId: story.userId,
+    name: story.name,
+    isUserStory: story.isUserStory,
+    mediaUrl: story.mediaUrl,
+  })
+
+  return (
       <div key={story.id} className="relative min-w-[86px] text-center">
         <button
           type="button"
           onClick={async () => {
-  const originalIndex = stories.findIndex(
-    (item) => item.id === story.id
-  )
+  const originalIndex =
+  story.firestoreId && story.userId
+    ? stories.findIndex(
+        (item) =>
+          item.firestoreId &&
+          item.userId === story.userId
+      )
+    : stories.findIndex(
+        (item) => item.id === story.id
+      )
 
   setActiveStoryIndex(originalIndex)
 
@@ -469,6 +569,13 @@ useEffect(() => {
             {story.id === "your-story" ? "Add Story" : story.sport}
           </p>
         </button>
+
+        {ownsStory(story) && (
+          <button type="button" disabled={deletingStory} onClick={() => removeStory(story)}
+            className="mt-2 min-h-11 rounded-lg border border-red-600 px-2 py-2 text-xs font-bold text-red-700 disabled:opacity-50">
+            {deletingStory ? 'Deleting…' : 'Delete story'}
+          </button>
+        )}
 
         {story.id === "your-story" && (
           <button
@@ -553,8 +660,9 @@ useEffect(() => {
           >
             ×
           </button>
+          {ownsStory(activeStory) && <button type="button" disabled={deletingStory} className="absolute right-6 top-20 z-40 min-h-11 rounded-lg bg-red-700 px-4 py-2 font-bold text-white disabled:opacity-50" onClick={() => removeStory(activeStory)}>{deletingStory ? 'Deleting…' : 'Delete story'}</button>}
 
-          <div className="relative z-20 flex h-full max-h-[85vh] w-full max-w-md items-center justify-center overflow-hidden rounded-2xl bg-black">
+        <div className="relative z-20 aspect-[9/16] h-[85vh] max-h-[85vh] w-auto max-w-[95vw] overflow-hidden rounded-2xl bg-black">
             {activeStory.mediaUrl &&
             activeStory.mediaType === "Video" ? (
               <video
@@ -575,14 +683,14 @@ useEffect(() => {
                   }
                 }}
                 onEnded={showNextStory}
-                className="h-full w-full object-contain"
+                className="h-full w-full object-cover"
               />
             ) : activeStory.mediaUrl &&
               activeStory.mediaType === "Photo" ? (
               <img
                 src={activeStory.mediaUrl}
                 alt={activeStory.name}
-                className="h-full w-full object-contain"
+                className="h-full w-full object-cover"
               />
             ) : (
               <div className="flex h-full min-h-[500px] w-full flex-col items-center justify-center bg-gradient-to-br from-red-900 via-gray-950 to-blue-950 px-8 text-center text-white">
@@ -601,6 +709,18 @@ useEffect(() => {
                     LIVE NOW
                   </span>
                 )}
+                {activeStory.userId === auth.currentUser?.uid && (
+  <button
+    type="button"
+    onClick={(event) => {
+      event.stopPropagation()
+      setShowViewers(true)
+    }}
+    className="absolute bottom-6 left-6 z-50 rounded-full bg-black/70 px-4 py-2 text-sm font-bold text-white backdrop-blur"
+  >
+    👥 {activeStory.views?.length || 0} Views
+  </button>
+)}
                 {activeStory.linkUrl && (
   <a
     href={activeStory.linkUrl}
@@ -614,11 +734,137 @@ useEffect(() => {
     Visit Link ↗
   </a>
 )}
+{/* Story reply + like controls */}
+<div
+  className="fixed bottom-8 left-1/2 z-[100] flex w-[90%] max-w-md -translate-x-1/2 items-center gap-3"
+  onClick={(event) => event.stopPropagation()}
+>
+  <input
+    type="text"
+    value={storyReply}
+    onChange={(event) => setStoryReply(event.target.value)}
+    placeholder="Send a reply..."
+    className="flex-1 rounded-full border border-white/70 bg-black/30 px-5 py-3 text-sm text-white placeholder:text-white/70 outline-none backdrop-blur"
+  />
+
+  <button
+    type="button"
+   onClick={async () => {
+  const user = auth.currentUser
+
+  if (!user) {
+    alert("ERROR: No logged-in user")
+    return
+  }
+
+  if (!activeStory) {
+    alert("ERROR: No active story")
+    return
+  }
+
+  const storyStateId = uploadStateId || stateId
+
+  
+  try {
+    alert(
+  "ACTIVE STORY\n" +
+  "id: " + activeStory.id + "\n" +
+  "firestoreId: " + activeStory.firestoreId + "\n" +
+  "userId: " + activeStory.userId
+)
+    const liked = await toggleStoryLike(
+      storyStateId,
+      activeStory.firestoreId || activeStory.id,
+      user.uid
+    )
+
+    alert(`FIRESTORE FINISHED: liked = ${liked}`)
+
+    setStoryLiked(liked)
+
+    setStoryLikeCount((count) =>
+      liked ? count + 1 : Math.max(0, count - 1)
+    )
+  } catch (error) {
+    alert(
+      `FIRESTORE ERROR: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    )
+  }
+}}
+    className="flex h-12 w-12 items-center justify-center rounded-full bg-black/40 text-3xl text-white"
+    aria-label={storyLiked ? "Unlike story" : "Like story"}
+  >
+    {storyLiked ? "❤️" : "♡"}
+  </button>
+</div>
               </div>
             )}
           </div>
         </div>
       )}
+      {showViewers && activeStory && (
+  <div
+    className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+    onClick={() => setShowViewers(false)}
+  >
+    <div
+      className="w-full max-w-md rounded-2xl bg-white p-6 text-black shadow-2xl"
+      onClick={(event) => event.stopPropagation()}
+    >
+      <div className="mb-5 flex items-center justify-between">
+        <h2 className="text-xl font-bold">
+          Story Viewers
+        </h2>
+
+        <button
+          type="button"
+          onClick={() => setShowViewers(false)}
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-100 text-xl font-bold"
+        >
+          ×
+        </button>
+      </div>
+
+      {activeStory.views && activeStory.views.length > 0 ? (
+        <div className="max-h-80 space-y-4 overflow-y-auto">
+          {activeStory.views.map((viewer) => (
+            <div
+              key={viewer.userId}
+              className="flex items-center gap-3 border-b border-gray-100 pb-3"
+            >
+              {viewer.avatarUrl ? (
+                <img
+                  src={viewer.avatarUrl}
+                  alt={viewer.userName}
+                  className="h-11 w-11 rounded-full object-cover"
+                />
+              ) : (
+                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-gray-200 font-bold">
+                  {viewer.userName?.charAt(0).toUpperCase() || "?"}
+                </div>
+              )}
+
+              <div>
+                <p className="font-semibold">
+                  {viewer.userName}
+                </p>
+                <p className="text-sm text-gray-500">
+                  Viewed your story
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="py-8 text-center text-gray-500">
+          No views yet.
+        </div>
+      )}
+    </div>
+  </div>
+)}
     </>
   )
 }

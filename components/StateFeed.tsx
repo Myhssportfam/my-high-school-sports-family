@@ -4,6 +4,7 @@ import { storage, auth, db } from '../lib/firebase'
 import MediaEditor from './MediaEditor'
 import { useRouter } from 'next/router'
 import { useUserProfile } from '../hooks/useUserProfile'
+import {deleteContent} from '../lib/deleteContent'
 
 
 import {
@@ -113,6 +114,7 @@ export default function StateFeed({ stateId, stateName }: StateFeedProps) {
   const [message, setMessage] = useState('')
   const [postType, setPostType] = useState<PostType>('Update')
   const [posts, setPosts] = useState<FeedPost[]>([])
+  const [deletingPost, setDeletingPost] = useState('')
   const [commentText, setCommentText] = useState<Record<string, string>>({})
   const [postingComment, setPostingComment] = useState<Record<string, boolean>>({})
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -208,7 +210,7 @@ useEffect(() => {
 
         return {
           id: postDoc.id,
-          authorId: data.authorId || '',
+          authorId: data.authorId || data.userId || '',
           author: data.author || 'Sports Family Member',
           initials: data.initials || 'SF',
           photoURL: data.photoURL || undefined,
@@ -293,6 +295,7 @@ try {
     collection(db, 'stateFeeds', stateFeedId, 'posts'),
     {
       authorId: newPost.authorId || '',
+      userId: newPost.authorId || '',
       author: newPost.author,
       initials: newPost.initials,
       photoURL: newPost.photoURL || '',
@@ -308,7 +311,7 @@ try {
   )
 } catch (error) {
   console.error('Post could not be published:', error)
-  alert('Your post could not be published. Please try again.')
+  alert(error instanceof Error ? error.message : String(error))
   return
 }
     setMessage('')
@@ -442,6 +445,7 @@ setPostingComment((current) => ({
     
 
   async function deletePost(postId: string) {
+  if (deletingPost) return
   if (postId.startsWith('starter-')) {
     setPosts((currentPosts) =>
       currentPosts.filter((post) => post.id !== postId)
@@ -459,27 +463,19 @@ setPostingComment((current) => ({
   }
 
   const confirmed = window.confirm(
-    'Are you sure you want to delete this post?'
+    'Delete this post? If it was shared from your profile, that profile post will be deleted too.'
   )
 
   if (!confirmed) return
 
   const stateFeedId = stateId
-
+  setDeletingPost(postId)
   try {
-    const postRef = doc(
-      db,
-      'stateFeeds',
-      stateFeedId,
-      'posts',
-      postId
-    )
-
-    await deleteDoc(postRef)
+    await deleteContent({kind:'state',id:postId,stateId:stateFeedId})
   } catch (error) {
     console.error('Post could not be deleted:', error)
     alert('The post could not be deleted. Please try again.')
-  }
+  } finally {setDeletingPost('')}
 }
 
   return (
@@ -598,11 +594,17 @@ setPostingComment((current) => ({
 </div>
 
           <textarea
-            value={message}
-            placeholder={`Share something with the ${stateName} sports family...`}
-            onChange={(event) => setMessage(event.target.value)}
-            maxLength={500}
-          />
+  value={message}
+  placeholder={`Share something with the ${stateName} sports family...`}
+  onChange={(event) => setMessage(event.target.value)}
+  maxLength={500}
+  style={{
+    backgroundColor: '#ffffff',
+    color: '#111827',
+    WebkitTextFillColor: '#111827',
+    colorScheme: 'light',
+  }}
+/>
         </div>
 
         <div className="composerBottom">
@@ -730,9 +732,11 @@ setPostingComment((current) => ({
                   <button
                     type="button"
                     onClick={() => deletePost(post.id)}
+                    disabled={!!deletingPost}
                     aria-label="Delete post"
+                    className="min-h-11 px-3 text-red-600 disabled:opacity-50"
                   >
-                    ×
+                    {deletingPost === post.id ? 'Deleting…' : 'Delete post'}
                   </button>
                 )}
               </div>

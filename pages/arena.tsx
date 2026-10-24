@@ -1,3 +1,5 @@
+import ArenaBroadcastHub from '../components/broadcast/ArenaBroadcastHub';
+import LiveFeed from '../components/broadcast/LiveFeed';
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from "next/router"
@@ -24,7 +26,7 @@ import {
   endArenaMatch,
   type ArenaLeaderboardPlayer,
 } from "../lib/arenaLive";
-import { leaveArenaRoom } from '../lib/arenaLive'
+import { leaveArenaRoom, joinArenaRoom, setArenaMemberReady, startArenaMatch } from '../lib/arenaLive'
 import { updateStateArenaRecord } from "../lib/stateRankings"
 type RoomStatus = 'live' | 'open' | 'scheduled' | 'full'
 
@@ -527,7 +529,8 @@ if (!userState) {
   router.push('/profile')
   return
 }
-    const form = new FormData(event.currentTarget)
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement)
 
     const title = String(form.get('title') || '').trim()
     const game = String(form.get('game') || '').trim()
@@ -588,6 +591,7 @@ try {
     doc(db, 'arenaRooms', newRoom.id),
     roomData
   )
+  await joinArenaRoom(newRoom.id, {uid:user.uid, displayName:profile?.displayName || user.displayName || 'Sports Family Member', state:userState});
 } catch (error) {
   console.error('Arena room could not be saved:', error)
 
@@ -599,10 +603,10 @@ try {
 }
   
     setNotice(
-      'Your gaming room was created on this page. Firebase saving and invitations will be connected next.',
+      'Your Arena room was saved. Players can join, and you can start a broadcast.',
     )
     setIsCreateOpen(false)
-    event.currentTarget.reset()
+    formElement.reset()
   }
 
   function getGameIcon(game: string) {
@@ -617,21 +621,8 @@ try {
     if (!user?.uid || !room.id) return
 
     try {
-      const roomRef = doc(db, "arenaRooms", room.id)
-      const currentParticipants = room.participants || []
-
-      const updatedParticipants = currentParticipants.map(
-        (participant: any) =>
-          participant.userId === user.uid
-            ? { ...participant, ready: !participant.ready }
-            : participant
-      )
-
-      await setDoc(
-        roomRef,
-        { participants: updatedParticipants },
-        { merge: true }
-      )
+      const participant = room.participants?.find((p: any) => p.userId === user.uid);
+      await setArenaMemberReady(room.id, user.uid, !participant?.ready);
     } catch (error) {
       console.error("Failed to toggle ready status:", error)
       setNotice("Could not update ready status. Please try again.")
@@ -726,79 +717,14 @@ stateId: userStateId,
     }
   }
 try {
-  const joinedUserIds = room.joinedUserIds || []
-  const currentParticipants = room.participants || []
-  const roomRef = doc(db, "arenaRooms", room.id)
-
-  // USER IS ALREADY IN THE ROOM → LEAVE
-  if (joinedUserIds.includes(user.uid)) {
-    const nextJoinedUserIds = joinedUserIds.filter(
-      (id: string) => id !== user.uid
-    )
-
-    const nextParticipants = currentParticipants.filter(
-      (participant: any) => participant.userId !== user.uid
-    )
-
-    const nextPlayers = nextJoinedUserIds.length
-
-    await setDoc(
-      roomRef,
-      {
-        joinedUserIds: nextJoinedUserIds,
-        participants: nextParticipants,
-        players: nextPlayers,
-        status: "open",
-      },
-      { merge: true }
-    )
-
-    window.alert("You left the Arena room.")
-    return
+  if (room.joinedUserIds?.includes(user.uid)) {
+    await leaveArenaRoom(room.id, user.uid);
+    setNotice('You left the Arena room.');
+  } else {
+    await joinArenaRoom(room.id, {uid:user.uid, displayName, state: userState});
+    await router.push(`/arena/${room.id}?action=join`);
   }
-
-  // USER IS NOT IN THE ROOM → JOIN
-  const nextJoinedUserIds = [...joinedUserIds, user.uid]
-
-  const nextParticipants = [
-  ...currentParticipants,
-  {
-    userId: user.uid,
-    displayName,
-    state: userState,
-    playstationId: playstationId || "",
-    xboxGamertag: xboxGamertag || "",
-    eaId: eaId || "",
-    ready: false,
-  },
-]
-
-  const nextPlayers = Math.min(
-    nextJoinedUserIds.length,
-    room.maxPlayers || 2
-  )
-
-  await setDoc(
-    roomRef,
-    {
-      joinedUserIds: nextJoinedUserIds,
-      participants: nextParticipants,
-      players: nextPlayers,
-      status:
-        nextPlayers >= (room.maxPlayers || 2)
-          ? "full"
-          : "open",
-    },
-    { merge: true }
-  )
-
-  router.push(
-    `/arena/${room.id}?state=${encodeURIComponent(
-      userState ?? ""
-    )}&action=join`
-  )
-
-  return
+  return;
 } catch (error) {
   console.error("Arena room could not be updated:", error)
 
@@ -828,6 +754,8 @@ try {
       </Head>
 
       <main className="arenaPage">
+        <ArenaBroadcastHub />
+        <LiveFeed arenaOnly inline heading="Arena Live & Scheduled Streams" />
         <button
   onClick={handleTestStateMatch}
   style={{
@@ -1786,13 +1714,7 @@ onClick={() => handleRoomAction(room)}
       className="startMatchButton"
       onClick={async () => {
         try {
-          await setDoc(
-            doc(db, "arenaRooms", room.id),
-            {
-              status: "live",
-            },
-            { merge: true }
-          )
+          await startArenaMatch(room.id)
 
           setNotice("Match started!")
         } catch (error) {

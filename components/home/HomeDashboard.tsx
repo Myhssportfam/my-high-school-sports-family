@@ -1,3 +1,4 @@
+import LiveFeed from '../broadcast/LiveFeed';
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import StoriesBar from "../StoriesBar";
@@ -196,6 +197,110 @@ function normalizeStateId(value?: string) {
 
   return matchingState?.[0] ?? "";
 }
+type NationalSport = 'football' | 'basketball' | 'baseball' | 'soccer' | 'volleyball';
+type NationalRanking = {
+  label: string;
+  category: string;
+  season: string;
+  updated: string | null;
+  source: string;
+  note?: string;
+  teams: Array<[name: string, state: string, record: string]>;
+};
+// Verified October 10, 2026. These are dated snapshots, not a live feed.
+// Update each list and its source date together after checking the source.
+const NATIONAL_RANKINGS: Record<NationalSport, NationalRanking> = {
+  football: {
+    label: 'Football', category: '11-man football', season: '2026', updated: 'October 5, 2026',
+    source: 'https://www.maxpreps.com/football/rankings/1/',
+    note: 'The source currently lists 100 teams; complete national rankings return during postseason play.',
+    teams: [
+      ['St. Thomas Aquinas', 'FL', '6-0-0'], ['St. Frances Academy', 'MD', '5-0-0'],
+      ['IMG Academy', 'FL', '6-0-0'], ['Santa Margarita', 'CA', '6-0-0'],
+      ['Buford', 'GA', '5-0-0'], ['Sierra Canyon', 'CA', '6-0-0'],
+      ['Columbus', 'FL', '6-1-0'], ['Bishop Gorman', 'NV', '5-1-0'],
+      ['St. John Bosco', 'CA', '5-1-0'], ['Allen', 'TX', '5-0-0'],
+    ],
+  },
+  basketball: {
+    label: 'Basketball', category: 'Boys basketball', season: '2026–27', updated: null,
+    source: 'https://www.maxpreps.com/basketball/rankings/1/', teams: [],
+    note: 'No rankings were available for this season when checked on October 10, 2026.',
+  },
+  baseball: {
+    label: 'Baseball', category: 'Baseball', season: '2026–27', updated: null,
+    source: 'https://www.maxpreps.com/baseball/rankings/1/', teams: [],
+    note: 'No rankings were available for this season when checked on October 10, 2026.',
+  },
+  soccer: {
+    label: 'Soccer', category: 'Boys soccer', season: 'Fall 2026', updated: 'October 9, 2026',
+    source: 'https://www.maxpreps.com/soccer/rankings/1/',
+    note: 'Fall-season rankings; schools playing in other seasons are ranked separately.',
+    teams: [
+      ['Charlotte Catholic', 'NC', '17-0-0'], ['Apex Friendship', 'NC', '17-0-1'],
+      ['St. Xavier', 'KY', '18-0-1'], ['Hoggard', 'NC', '13-0-2'],
+      ['Rockhurst', 'MO', '11-0-1'], ['St. Ignatius', 'OH', '12-2-1'],
+      ['Dublin Jerome', 'OH', '14-1-1'], ['Laney', 'NC', '16-1-1'],
+      ['St. Charles', 'OH', '13-2-1'], ['Marvin Ridge', 'NC', '12-2-0'],
+    ],
+  },
+  volleyball: {
+    label: 'Volleyball', category: 'Girls volleyball', season: 'Fall 2026', updated: 'October 6, 2026',
+    source: 'https://www.maxpreps.com/volleyball/rankings/1/',
+    teams: [
+      ['Mater Dei', 'CA', '32-1-0'], ['Sierra Canyon', 'CA', '26-1-0'],
+      ['Cornerstone Christian', 'TX', '33-5-0'], ['Orangewood Christian', 'FL', '21-2-0'],
+      ['Allen', 'TX', '31-2-0'], ["'Iolani", 'HI', '21-2-0'],
+      ['Mother McAuley', 'IL', '24-3-0'], ['Assumption', 'KY', '29-3-0'],
+      ['Marist', 'IL', '23-3-0'], ['Prestonwood Christian', 'TX', '34-4-0'],
+    ],
+  },
+};
+const NATIONAL_SPORTS: NationalSport[] = ['football', 'basketball', 'baseball', 'soccer', 'volleyball'];
+
+function NationalRankings() {
+  const [sport, setSport] = useState<NationalSport>('football');
+  const ranking = NATIONAL_RANKINGS[sport];
+  return (
+    <section aria-labelledby="national-rankings-heading" className="mt-4 rounded-2xl border border-white/10 bg-[#07111d] p-4">
+      <p className="text-xs font-bold uppercase tracking-widest text-red-400">Across the nation</p>
+      <h2 id="national-rankings-heading" className="mt-1 text-xl font-black text-white">National High School Rankings</h2>
+      <div aria-label="Choose a national rankings sport" className="mt-4 flex flex-wrap gap-2">
+        {NATIONAL_SPORTS.map(id => (
+          <button key={id} type="button" aria-pressed={sport === id} onClick={() => setSport(id)}
+            className={`min-h-[44px] rounded-full px-4 py-2 text-sm font-bold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 ${sport === id ? 'bg-red-600 text-white' : 'bg-white/10 text-gray-200 hover:bg-white/20'}`}>
+            {NATIONAL_RANKINGS[id].label}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4" aria-live="polite" aria-atomic="true">
+        <h3 className="font-bold text-white">{ranking.category} · {ranking.season}</h3>
+        <p className="mt-1 text-xs leading-5 text-gray-300">Source: MaxPreps · {ranking.updated ? `Source updated ${ranking.updated}` : 'Rankings not available'}<br />Snapshot checked October 10, 2026 · Not automatically updated</p>
+        {ranking.note && <p className="mt-2 text-sm leading-6 text-gray-300">{ranking.note}</p>}
+      </div>
+      {ranking.teams.length > 0 && (
+        <div className="mt-4 overflow-x-auto rounded-xl border border-white/10">
+          <table className="w-full text-left text-sm">
+            <caption className="sr-only">Top 10 national {ranking.category} teams, {ranking.season}; source updated {ranking.updated}</caption>
+            <thead className="bg-white/10 text-gray-200"><tr><th scope="col" className="px-3 py-3">Rank</th><th scope="col" className="px-3 py-3">School</th><th scope="col" className="px-3 py-3">State</th><th scope="col" className="px-3 py-3">Record</th></tr></thead>
+            <tbody>{ranking.teams.map(([name, state, record], index) => (
+              <tr key={`${sport}-${name}-${state}`} className="border-t border-white/10 hover:bg-white/5">
+                <td className="px-3 py-3 font-black text-red-400">#{index + 1}</td>
+                <th scope="row" className="px-3 py-3 font-semibold text-white">{name}</th>
+                <td className="px-3 py-3 text-gray-300">{state}</td>
+                <td className="whitespace-nowrap px-3 py-3 text-gray-300">{record}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+      )}
+      <a href={ranking.source} target="_blank" rel="noopener noreferrer" className="mt-4 inline-flex min-h-[44px] items-center rounded-lg border border-blue-400/30 px-4 py-2 text-sm font-bold text-blue-300 hover:bg-blue-400/10">
+        {ranking.teams.length ? 'View full rankings on MaxPreps ↗' : 'Check rankings on MaxPreps ↗'}<span className="sr-only"> (opens a new tab)</span>
+      </a>
+    </section>
+  );
+}
+
 export default function HomeDashboard() {
   const featuredState = getFeaturedState();
   type TopSchoolSport =
@@ -650,6 +755,8 @@ return (
 
         {/* LIVE NOW */}
         <aside className="min-w-0 border-l border-white/10 bg-[#04101b] p-4">
+          <LiveFeed section="week" inline />
+          <LiveFeed section="trending" inline />
           
 
           <Link
@@ -791,6 +898,7 @@ return (
     </div>
   )}
 </div>
+          <NationalRankings />
         </div>
 
         {/* MAIN FEED */}

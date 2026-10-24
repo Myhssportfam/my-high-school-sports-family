@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
 import { signUpWithEmail, signInWithGoogle } from '../lib/auth'
 
@@ -10,6 +10,8 @@ export default function SignUp() {
   const [role, setRole] = useState('athlete')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => { if (router.isReady && router.query.role === 'coach') setRole('coach') }, [router.isReady, router.query.role])
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()

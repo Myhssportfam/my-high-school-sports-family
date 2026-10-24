@@ -3,6 +3,7 @@ export type UserRole = 'athlete' | 'coach' | 'parent' | 'admin'
 export interface UserProfile {
   id: string
   displayName: string
+  coachesCorner?: boolean
   role: UserRole
   email?: string
   avatarUrl?: string

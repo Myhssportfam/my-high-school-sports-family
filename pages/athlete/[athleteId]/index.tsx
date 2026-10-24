@@ -1,3 +1,5 @@
+import { BroadcastButtons } from '../../../components/broadcast/BroadcastProvider';
+import LiveFeed from '../../../components/broadcast/LiveFeed';
 import { useEffect, useState} from 'react'
 import { useRouter } from 'next/router'
 import { athletes } from '../../../lib/athletes'
@@ -149,6 +151,7 @@ const handleProfileVideo = (event: React.ChangeEvent<HTMLInputElement>) => {
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-900">
+      <div className="mx-auto max-w-7xl px-4"><BroadcastButtons athleteId={athleteId} /><LiveFeed athleteId={athleteId} inline heading="Athlete Live Streams" /></div>
       <section className="bg-gradient-to-br from-slate-950 via-slate-900 to-red-950 text-white">
         <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
           <button

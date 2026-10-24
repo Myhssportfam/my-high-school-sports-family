@@ -1,3 +1,4 @@
+import LivePlayer from '../../components/broadcast/LivePlayer';
 import Head from "next/head"
 import Link from "next/link"
 import { useRouter } from "next/router"
@@ -15,9 +16,10 @@ import {
 
 import { db } from "../../lib/firebase"
 import { useAuth } from "../../hooks/useAuth"
-type StreamStatus = "live" | "scheduled" | "replay"
+type StreamStatus = "live" | "scheduled" | "replay" | "connecting" | "ended" | "failed"
 
 type Stream = {
+  provider?: string
   id: string
   title: string
   broadcaster: string
@@ -85,6 +87,7 @@ export default function StreamWatchPage() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
 const [chatText, setChatText] = useState("")
 const isStreamOwner =
+  stream?.provider !== "cloudflare" &&
   !!user?.uid &&
   !!stream?.createdBy &&
   user.uid === stream.createdBy
@@ -193,7 +196,7 @@ useEffect(() => {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[2fr_1fr]">
           <section>
-            <div className="aspect-video overflow-hidden rounded-2xl bg-black">
+            {stream.provider === "cloudflare" ? <LivePlayer id={stream.id} /> : <div className="aspect-video overflow-hidden rounded-2xl bg-black">
               {embedUrl ? (
                 <iframe
                   src={embedUrl}
@@ -217,7 +220,7 @@ useEffect(() => {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             <div className="mt-5">
               <div className="flex flex-wrap items-center gap-3">

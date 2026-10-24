@@ -1,0 +1,62 @@
+// Add this block INSIDE your existing match /databases/{database}/documents { ... }.
+// Preserve all existing live, profile, state community, and other rules.
+
+    function coachesSignedIn() { return request.auth != null; }
+    function coachesOwns(userId) { return coachesSignedIn() && request.auth.uid == userId; }
+    function coachesValidPost() {
+      return request.resource.data.authorId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.media is list
+        && request.resource.data.media.size() <= 4;
+    }
+    function coachMember() {
+      return coachesSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('role', '') == 'coach'
+          || get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('coachesCorner', false) == true);
+    }
+    match /coachPosts/{postId} {
+      allow read: if coachesSignedIn();
+      allow create: if coachMember() && coachesValidPost()
+        && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 140
+        && request.resource.data.content.size() > 0
+        && request.resource.data.likesCount == 0
+        && request.resource.data.topic in ['Discussion', 'Players', 'Camps']
+        && (request.resource.data.get('repostOf', '') == ''
+          || (request.resource.data.repostOf is string
+            && exists(/databases/$(database)/documents/coachPosts/$(request.resource.data.repostOf))
+            && get(/databases/$(database)/documents/coachPosts/$(request.resource.data.repostOf)).data.get('repostOf', '') == ''));
+      allow delete: if coachesSignedIn() && resource.data.authorId == request.auth.uid;
+      allow update: if coachesSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount'])
+        && request.resource.data.likesCount is int && request.resource.data.likesCount >= 0
+        && (
+          (!exists(/databases/$(database)/documents/coachPosts/$(postId)/likes/$(request.auth.uid))
+            && existsAfter(/databases/$(database)/documents/coachPosts/$(postId)/likes/$(request.auth.uid))
+            && request.resource.data.likesCount == resource.data.get('likesCount', 0) + 1)
+          || (exists(/databases/$(database)/documents/coachPosts/$(postId)/likes/$(request.auth.uid))
+            && !existsAfter(/databases/$(database)/documents/coachPosts/$(postId)/likes/$(request.auth.uid))
+            && request.resource.data.likesCount == resource.data.get('likesCount', 0) - 1)
+        );
+      match /likes/{userId} {
+        allow read: if coachesSignedIn();
+        allow create: if coachesOwns(userId) && request.resource.data.userId == request.auth.uid
+          && exists(/databases/$(database)/documents/coachPosts/$(postId))
+          && getAfter(/databases/$(database)/documents/coachPosts/$(postId)).data.likesCount
+            == get(/databases/$(database)/documents/coachPosts/$(postId)).data.get('likesCount', 0) + 1;
+        allow delete: if coachesOwns(userId)
+          && exists(/databases/$(database)/documents/coachPosts/$(postId))
+          && getAfter(/databases/$(database)/documents/coachPosts/$(postId)).data.likesCount
+            == get(/databases/$(database)/documents/coachPosts/$(postId)).data.get('likesCount', 0) - 1;
+        allow update: if false;
+      }
+      match /comments/{commentId} {
+        allow read: if coachesSignedIn();
+        allow create: if coachMember() && exists(/databases/$(database)/documents/coachPosts/$(postId))
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string && request.resource.data.text.size() > 0 && request.resource.data.text.size() <= 500;
+        allow delete: if coachesSignedIn() && resource.data.authorId == request.auth.uid;
+        allow update: if false;
+      }
+    }
+

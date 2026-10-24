@@ -1,0 +1,93 @@
+import React, {useEffect, useRef, useState} from 'react';
+import {ActivityIndicator, Alert, BackHandler, Linking, Platform, Pressable, Share, StyleSheet, Text, View} from 'react-native';
+import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
+import {WebView} from 'react-native-webview';
+
+// Set this public URL to your deployed HTTPS site before building.
+// Never place Firebase Admin credentials or Cloudflare API tokens in this app.
+const SITE = 'https://myhssportsfamily.vercel.app';
+const HOST = new URL(SITE).hostname;
+const tabs = [
+  {label:'Home', path:'/'}, {label:'States', path:'/states'},
+  {label:'Live', path:'/live'}, {label:'Arena', path:'/arena'},
+  {label:'Coaches', path:'/coaches'},
+];
+
+export default function App() {
+  const web = useRef<WebView>(null);
+  const [uri, setUri] = useState(SITE);
+  const [currentUrl, setCurrentUrl] = useState(SITE);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [failed, setFailed] = useState(false);
+  const [active, setActive] = useState('/');
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (canGoBack) {web.current?.goBack();return true;}
+      return false;
+    });
+    return () => sub.remove();
+  }, [canGoBack]);
+  function navigate(path:string) {
+    setActive(path);setFailed(false);setLoading(true);setUri(`${SITE}${path}`);
+    // Keep the same WebView and cookie store as the user moves between tabs.
+  }
+  async function external(url:string) {
+    if (!/^(https?:|mailto:|tel:)/i.test(url)) return;
+    try {await Linking.openURL(url);} catch {Alert.alert('Could not open this link', 'Please try again.');}
+  }
+  function allowNavigation(url:string) {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' && parsed.hostname === HOST) return true;
+    } catch {return false;}
+    void external(url);
+    return false;
+  }
+  async function sharePage() {
+    try {
+      const parsed=new URL(currentUrl);
+      if (parsed.protocol !== 'https:' || parsed.hostname !== HOST) return;
+      await Share.share(Platform.OS === 'ios'
+        ? {title:'My High School Sports Family',url:currentUrl}
+        : {title:'My High School Sports Family',message:currentUrl});
+    } catch {Alert.alert('Sharing could not open', 'Please try again.');}
+  }
+  return <SafeAreaProvider><SafeAreaView style={styles.safe} edges={['top','bottom']}>
+    <View style={styles.toolbar}>
+      <Pressable disabled={!canGoBack} onPress={() => web.current?.goBack()} style={styles.action} accessibilityRole="button" accessibilityLabel="Go back"><Text style={[styles.actionText,!canGoBack && styles.disabled]}>Back</Text></Pressable>
+      <Text style={styles.brand} numberOfLines={1}>Sports Family</Text>
+      <Pressable onPress={() => void sharePage()} style={styles.action} accessibilityRole="button"><Text style={styles.actionText}>Share</Text></Pressable>
+    </View>
+    <View style={styles.content}>
+      <WebView ref={web} source={{uri}} style={styles.web}
+        originWhitelist={['https://*','mailto:*','tel:*']}
+        onShouldStartLoadWithRequest={request => request.isTopFrame === false || allowNavigation(request.url)}
+        onOpenWindow={({nativeEvent}) => void external(nativeEvent.targetUrl)}
+        onNavigationStateChange={state => {setCanGoBack(state.canGoBack);setCurrentUrl(state.url);}}
+        onLoadStart={() => setLoading(true)}
+        onLoadEnd={() => setLoading(false)}
+        onError={() => {setFailed(true);setLoading(false);}}
+        onHttpError={({nativeEvent}) => {if (nativeEvent.statusCode >= 400) {setFailed(true);setLoading(false);}}}
+        onContentProcessDidTerminate={() => web.current?.reload()}
+        allowsInlineMediaPlayback mediaPlaybackRequiresUserAction
+        mediaCapturePermissionGrantType="prompt" sharedCookiesEnabled
+        javaScriptCanOpenWindowsAutomatically={false}
+        allowsBackForwardNavigationGestures />
+      {loading && !failed && <View style={styles.spinner} pointerEvents="none"><ActivityIndicator color="#b91c1c" accessibilityLabel="Loading Sports Family"/></View>}
+      {failed && <View style={styles.error}>
+        <Text style={styles.errorTitle}>Could not load Sports Family</Text>
+        <Text style={styles.errorText}>Check your connection and try again.</Text>
+        <Pressable style={styles.retry} onPress={() => {setFailed(false);setLoading(true);web.current?.reload();}} accessibilityRole="button"><Text style={styles.retryText}>Try again</Text></Pressable>
+      </View>}
+    </View>
+    <View style={styles.tabs}>{tabs.map(tab => <Pressable key={tab.path} style={[styles.tab,active === tab.path && styles.selected]} onPress={() => navigate(tab.path)} accessibilityRole="tab" accessibilityState={{selected:active === tab.path}}><Text style={styles.tabText}>{tab.label}</Text></Pressable>)}</View>
+  </SafeAreaView></SafeAreaProvider>;
+}
+const styles = StyleSheet.create({
+  safe:{flex:1,backgroundColor:'#071b3a'},toolbar:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',minHeight:48,paddingHorizontal:8},
+  brand:{color:'white',fontWeight:'800',fontSize:17},action:{minHeight:44,minWidth:58,alignItems:'center',justifyContent:'center'},actionText:{color:'white',fontWeight:'700'},disabled:{opacity:0.35},
+  content:{flex:1},web:{flex:1,backgroundColor:'white'},spinner:{position:'absolute',top:8,right:10,padding:10,backgroundColor:'white',borderRadius:20},
+  error:{...StyleSheet.absoluteFillObject,backgroundColor:'white',alignItems:'center',justifyContent:'center',padding:24},errorTitle:{fontSize:21,fontWeight:'800',color:'#071b3a',textAlign:'center'},errorText:{marginTop:12,textAlign:'center'},retry:{marginTop:24,padding:16,backgroundColor:'#b91c1c',borderRadius:10},retryText:{color:'white',fontWeight:'700'},
+  tabs:{flexDirection:'row',padding:6,gap:2},tab:{flex:1,minHeight:48,alignItems:'center',justifyContent:'center',borderRadius:8},selected:{backgroundColor:'#b91c1c'},tabText:{color:'white',fontSize:12,fontWeight:'700'},
+});

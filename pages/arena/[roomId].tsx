@@ -1,3 +1,5 @@
+import { BroadcastButtons } from '../../components/broadcast/BroadcastProvider';
+import LiveFeed from '../../components/broadcast/LiveFeed';
 import Link from "next/link"
 import { useRouter } from "next/router"
 import {
@@ -771,27 +773,6 @@ async function handleJoinRoom() {
     if (isJoined) {
   await leaveArenaRoom(roomId, user.uid)
 
-  const roomRef = doc(db, "arenaRooms", roomId)
-
-  const nextJoinedUserIds = (room.joinedUserIds || []).filter(
-    (id: string) => id !== user.uid
-  )
-
-  const nextParticipants = (room.participants || []).filter(
-    (participant: any) => participant.userId !== user.uid
-  )
-
-  await setDoc(
-    roomRef,
-    {
-      joinedUserIds: nextJoinedUserIds,
-      participants: nextParticipants,
-      players: nextJoinedUserIds.length,
-      status: "open",
-    },
-    { merge: true }
-  )
-
   setNotice(`You left ${room.title}.`)
   return
 }
@@ -862,6 +843,8 @@ const currentRoomStatus = liveRoomStatus || room.status
   return (
   <main className="min-h-screen bg-[#020814] px-4 py-8 text-white">
     <div className="mx-auto max-w-[1500px]">
+      {user && (room.ownerId === user.uid || room.joinedUserIds?.includes(user.uid)) && <BroadcastButtons context={{roomId: room.id, title: room.title, sport: room.game}} />}
+      <LiveFeed roomId={room.id} inline heading="Watch This Room Live" />
       <Link
     href={`/arena/state?state=${stateId}`}
         className="text-sm font-bold text-slate-400 hover:text-white"

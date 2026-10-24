@@ -1,3 +1,5 @@
+import { BroadcastButtons } from '../../../components/broadcast/BroadcastProvider';
+import LiveFeed from '../../../components/broadcast/LiveFeed';
 import Head from 'next/head'
 import Link from 'next/link'
 import { useRouter } from 'next/router'
@@ -502,6 +504,8 @@ const profilePosts = [
         
 
         <div className="container">
+          <BroadcastButtons athleteId={athleteId || undefined} />
+          <LiveFeed athleteId={athleteId || undefined} inline heading="Athlete Live Streams" />
           <section className="profile">
           <div className="rounded-3xl border border-white/10 bg-white/5 p-5">
   <div className="flex items-start gap-5">

@@ -1,0 +1,32 @@
+// Add INSIDE your existing match /databases/{database}/documents block.
+// Preserve the existing Coaches Corner, live stream, state feed, and other rules.
+match /users/{userId}/posts/{postId} {
+  allow read: if true;
+  allow create: if request.auth != null && request.auth.uid == userId
+    && request.resource.data.userId == userId
+    && request.resource.data.type in ['photo', 'video']
+    && request.resource.data.mediaUrl is string
+    && request.resource.data.caption is string;
+  allow update, delete: if request.auth != null && request.auth.uid == userId;
+  match /likes/{memberId} {
+    allow read: if true;
+    allow write: if request.auth != null && request.auth.uid == memberId;
+  }
+  match /comments/{commentId} {
+    allow read: if true;
+    allow create: if request.auth != null && request.resource.data.userId == request.auth.uid;
+    allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+  }
+}
+// The automatic community post uses both userId and authorId to support existing feed rules.
+match /stateFeeds/{stateId}/posts/{postId} {
+  allow create: if request.auth != null
+    && request.resource.data.activityType == 'profilePost'
+    && request.resource.data.userId == request.auth.uid
+    && request.resource.data.authorId == request.auth.uid
+    && request.resource.data.profileUserId == request.auth.uid
+    && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/posts/$(request.resource.data.profilePostId)).data.stateId == stateId
+    && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/posts/$(request.resource.data.profilePostId)).data.communityPostId == postId
+    && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/posts/$(request.resource.data.profilePostId)).data.mediaUrl == request.resource.data.mediaUrl
+    && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/posts/$(request.resource.data.profilePostId)).data.caption == request.resource.data.message;
+}

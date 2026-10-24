@@ -10,7 +10,8 @@
     "server": "node server/index.js",
     "backfill:followers": "node server/backfill_followers.js",
     "verify:admin": "node server/verify_admin.js",
-    "enable:firestore": "node server/enable_firestore_api.js"
+    "enable:firestore": "node server/enable_firestore_api.js",
+    "test:live": "node --test tests/broadcast*.cjs"
   },
   "dependencies": {
     "autoprefixer": "10.4.14",
@@ -35,6 +36,7 @@
     "firebase-admin": "11.11.0"
   },
   "devDependencies": {
+    "@firebase/rules-unit-testing": "3.0.2",
     "@types/react": "19.2.17",
     "@types/react-simple-maps": "^3.0.6",
     "eslint": "8.49.0",

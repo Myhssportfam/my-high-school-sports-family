@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react'
+import {deleteContent} from '../lib/deleteContent'
 import Link from 'next/link'
-import { createReshare, deletePost, hasUserLiked, hasUserSaved, toggleLike, toggleSave } from '../lib/posts'
+import { createReshare, hasUserLiked, hasUserSaved, toggleLike, toggleSave } from '../lib/posts'
 import { useAuth } from '../hooks/useAuth'
 import CommentSection from './CommentSection'
 import Lightbox from './Lightbox'
@@ -24,6 +25,7 @@ export default function PostCard({ post, initialLiked }: { post: any; initialLik
   const [commentsOpen, setCommentsOpen] = useState(false)
   const [sharing, setSharing] = useState(false)
   const [deleted, setDeleted] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
@@ -71,10 +73,13 @@ export default function PostCard({ post, initialLiked }: { post: any; initialLik
   }
 
   async function onDelete() {
+    if (deleting) return
     if (!user || user.uid !== post.authorId) return
     if (!window.confirm('Delete this post?')) return
-    try { await deletePost(post.id, user.uid); setDeleted(true) }
+    setDeleting(true)
+    try { await deleteContent({kind:'post',id:post.id}); setDeleted(true) }
     catch (err: any) { setError(err.message || 'Post could not be deleted.') }
+    finally {setDeleting(false)}
   }
 
   if (deleted) return null
@@ -92,7 +97,7 @@ export default function PostCard({ post, initialLiked }: { post: any; initialLik
         <div className="post-tags">
           {post.sport && <span>🏅 {post.sport}</span>}
           {post.state && <span>📍 {post.state}</span>}
-          {user?.uid === post.authorId && <button onClick={onDelete} title="Delete post">•••</button>}
+          {user && user.uid === post.authorId && <button disabled={deleting} onClick={onDelete} className="min-h-11 px-3 text-red-600" title="Delete post">{deleting ? 'Deleting…' : 'Delete post'}</button>}
         </div>
       </header>
 

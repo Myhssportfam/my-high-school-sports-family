@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "My High School Sports Family",
+    "slug": "myhssportsfamily",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "icon": "./assets/app-icon.png",
+    "scheme": "myhssportsfamily",
+    "ios": {
+      "bundleIdentifier": "com.myhssportsfamily.app",
+      "supportsTablet": false,
+      "infoPlist": {
+        "NSCameraUsageDescription": "Use your camera to share sports photos and go live.",
+        "NSMicrophoneUsageDescription": "Use your microphone for live sports broadcasts and videos.",
+        "NSPhotoLibraryUsageDescription": "Choose sports photos and videos to share with your community.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.myhssportsfamily.app",
+      "permissions": ["CAMERA", "RECORD_AUDIO"]
+    }
+  }
+}

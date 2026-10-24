@@ -1,0 +1,152 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owns(userId) { return signedIn() && request.auth.uid == userId; }
+    function validPost() {
+      return request.resource.data.authorId == request.auth.uid
+        && request.resource.data.content is string
+        && request.resource.data.content.size() <= 2000
+        && request.resource.data.media is list
+        && request.resource.data.media.size() <= 4;
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create, update: if owns(userId);
+      allow delete: if false;
+      match /followers/{followerId} { allow read: if true; allow write: if owns(followerId); }
+      match /following/{followId} { allow read: if true; allow write: if owns(userId); }
+    }
+
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if signedIn() && validPost();
+      allow update: if signedIn() && (resource.data.authorId == request.auth.uid || request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount','commentsCount','reshareCount']));
+      allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.authorId == request.auth.uid && request.resource.data.text is string && request.resource.data.text.size() <= 500;
+        allow delete: if signedIn() && resource.data.authorId == request.auth.uid;
+      }
+      match /likes/{userId} { allow read: if true; allow write: if owns(userId); }
+    }
+
+    match /userLikes/{userId}/likes/{postId} { allow read, write: if owns(userId); }
+    match /userSaves/{userId}/saves/{postId} { allow read, write: if owns(userId); }
+    match /notifications/{userId}/items/{notificationId} {
+      allow read, update, delete: if owns(userId);
+      allow create: if signedIn();
+    }
+    match /schools/{schoolId} {
+  allow read: if true;
+  allow write: if false;
+}
+match /profilePosts/{postId} {
+  allow read: if true;
+
+  allow create: if signedIn()
+    && request.resource.data.authorId == request.auth.uid;
+
+  allow update: if signedIn()
+    && resource.data.authorId == request.auth.uid;
+
+  allow delete: if signedIn()
+    && resource.data.authorId == request.auth.uid;
+}
+match /cities/{cityId} {
+  allow read: if true;
+  allow write: if false;
+}
+match /stateStories/{stateId}/stories/{storyId} {
+  allow read: if true;
+
+  allow create: if signedIn()
+    && request.resource.data.userId == request.auth.uid;
+
+  // Story owner can update their own story.
+  // Other signed-in users can only change the views field.
+  allow update: if signedIn()
+    && (
+      resource.data.userId == request.auth.uid
+      ||
+      request.resource.data.diff(resource.data).affectedKeys()
+        .hasOnly(['views'])
+    );
+
+  allow delete: if signedIn()
+    && resource.data.userId == request.auth.uid;
+}
+match /stateFeeds/{stateId}/posts/{postId} {
+  allow read: if true;
+
+  allow create: if signedIn()
+    && request.resource.data.userId == request.auth.uid;
+
+  allow update, delete: if signedIn()
+    && resource.data.userId == request.auth.uid;
+}
+    // Live video records are managed by authenticated server API routes.
+    // Publish credentials and viewer leases are never readable by clients.
+    match /liveStreams/{streamId} {
+      allow read: if true;
+      allow create: if signedIn() && !request.resource.data.keys().hasAny(['provider'])
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update: if signedIn() && !resource.data.keys().hasAny(['provider'])
+        && resource.data.createdBy == request.auth.uid
+        && request.resource.data.createdBy == resource.data.createdBy
+        && !request.resource.data.keys().hasAny(['provider']);
+      allow delete: if signedIn() && !resource.data.keys().hasAny(['provider'])
+        && resource.data.createdBy == request.auth.uid;
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.userId == request.auth.uid
+          && request.resource.data.text is string && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+        allow update: if false;
+        allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+      }
+      match /viewers/{viewerId} { allow read, write: if false; }
+    }
+    match /broadcastSecrets/{streamId} { allow read, write: if false; }
+    match /broadcastHosts/{userId} { allow read, write: if false; }
+    match /arenaRooms/{roomId} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.joinedUserIds == [request.auth.uid]
+        && request.resource.data.players == 1
+        && request.resource.data.maxPlayers is int
+        && request.resource.data.maxPlayers >= 2 && request.resource.data.maxPlayers <= 32;
+      allow update: if signedIn() && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == resource.data.ownerId;
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+      match /members/{userId} {
+        allow read: if true;
+        // Membership and ready changes use /api/arena-membership.
+        allow write: if false;
+      }
+      match /messages/{messageId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.uid == request.auth.uid
+          && request.resource.data.text is string && request.resource.data.text.size() <= 500;
+        allow update: if false;
+        allow delete: if signedIn() && resource.data.uid == request.auth.uid;
+      }
+      match /challenges/{challengeId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.challengerUid == request.auth.uid;
+        allow update: if signedIn() && request.resource.data.challengerUid == resource.data.challengerUid
+          && request.resource.data.opponentUid == resource.data.opponentUid
+          && (resource.data.opponentUid == request.auth.uid || resource.data.challengerUid == request.auth.uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt']);
+        allow delete: if false;
+      }
+      match /{collectionName}/{documentId} {
+        allow read: if collectionName in ['results','champions','powerRankings'];
+        allow write: if collectionName in ['results','champions','powerRankings'] && signedIn()
+          && get(/databases/$(database)/documents/arenaRooms/$(roomId)).data.ownerId == request.auth.uid;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

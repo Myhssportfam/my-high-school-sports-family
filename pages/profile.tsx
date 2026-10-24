@@ -1,3 +1,5 @@
+import { BroadcastButtons } from '../components/broadcast/BroadcastProvider';
+import LiveFeed from '../components/broadcast/LiveFeed';
 import React, { useEffect, useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { useUserProfile } from '../hooks/useUserProfile'
@@ -5,7 +7,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/router'
 import { signOut } from '../lib/auth'
 import { uploadFile } from '../lib/storage'
+import {profileCommunityState, publishProfileCommunityPost} from '../lib/profileCommunityPosts'
+import {deleteContent} from '../lib/deleteContent'
 import SportsIdentity from "../components/SportsIdentity";
+import ShareButton from '../components/ShareButton';
 import SportsTimeline from "../components/SportsTimeline";
 import SportsPassport from "../components/SportsPassport";
 import {
@@ -145,6 +150,7 @@ const [showProfileComposer, setShowProfileComposer] = useState(false)
 const [profilePostsError, setProfilePostsError] = useState('')
 const [profilePosts, setProfilePosts] = useState<any[]>([])
 const [selectedPost, setSelectedPost] = useState<any | null>(null)
+const [deletingProfilePost, setDeletingProfilePost] = useState(false)
 const [selectedPostLiked, setSelectedPostLiked] = useState(false)
 const [selectedPostLikeCount, setSelectedPostLikeCount] = useState(0)
 const [selectedPostSaved, setSelectedPostSaved] = useState(false)
@@ -655,7 +661,8 @@ async function handleUncommit() {
     return
   }
   }
-  async function saveProfile() {
+  async function saveProfile(event?: React.FormEvent) {
+    event?.preventDefault()
     if (!user) return
     setSaving(true)
     setError(null)
@@ -664,9 +671,9 @@ async function handleUncommit() {
 
 updates.isPrivateProfile = isPrivateProfile
 
-if (form.displayName) updates.displayName = form.displayName
-      if (form.bio) updates.bio = form.bio
-      if (form.city) updates.city = form.city
+if (form.displayName !== undefined) updates.displayName = form.displayName.trim()
+      if (form.bio !== undefined) updates.bio = form.bio.trim()
+      if (form.city !== undefined) updates.city = form.city.trim()
     updates.playstationGamertag = (
   form.playstationGamertag || ""
 ).trim();
@@ -744,14 +751,14 @@ updates.stateId =
   stateSlugMap[form.state] ||
   form.state.toLowerCase().trim().replace(/\s+/g, "-")
 updates.stateCommunity = form.state
-      if (form.sports) updates.sports = form.sports.split(',').map((s) => s.trim())
-      if (form.gradYear) updates.gradYear = Number(form.gradYear)
-      if (form.height) updates.height = form.height
-      if (form.weight) updates.weight = form.weight
-      if (form.position) updates.position = form.position
-      if (form.schoolId) updates.schoolId = form.schoolId
-      if (form.teamId) updates.teamId = form.teamId
-      if (form.recruiting) updates.recruiting = { profileUrl: form.recruiting, status: profile?.recruiting?.status || 'open' }
+      if (form.sports !== undefined) updates.sports = form.sports.split(',').map((s) => s.trim()).filter(Boolean)
+      if (form.gradYear !== undefined) updates.gradYear = form.gradYear === '' ? null : Number(form.gradYear)
+      if (form.height !== undefined) updates.height = form.height.trim()
+      if (form.weight !== undefined) updates.weight = form.weight.trim()
+      if (form.position !== undefined) updates.position = form.position.trim()
+      if (form.schoolId !== undefined) updates.schoolId = form.schoolId.trim()
+      if (form.teamId !== undefined) updates.teamId = form.teamId.trim()
+      if (form.recruiting !== undefined) updates.recruiting = { profileUrl: form.recruiting.trim(), status: profile?.recruiting?.status || 'open' }
 
       if (avatarFile) {
         const path = `avatars/${user.uid}/${Date.now()}-${avatarFile.name}`
@@ -1024,6 +1031,10 @@ const handleToggleSavePost = async () => {
   try {
     setPostingProfileMedia(true)
 
+    const community = profileCommunityState(profile)
+    if (profilePostFiles.some(file => file.size >= 50 * 1024 * 1024)) {
+      throw new Error('Each photo or video must be smaller than 50 MB.')
+    }
     const uploadTime = Date.now()
 
     await Promise.all(
@@ -1031,26 +1042,13 @@ const handleToggleSavePost = async () => {
         const mediaType: "photo" | "video" =
           file.type.startsWith("video/") ? "video" : "photo"
 
-        const path = `profile-posts/${currentUser.uid}/${uploadTime}-${index}-${file.name}`
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '-')
+        const path = `posts/${currentUser.uid}/profile-${uploadTime}-${index}-${safeName}`
         const mediaUrl = await uploadFile(file, path)
-
-        await setDoc(
-          doc(
-            db,
-            "users",
-            currentUser.uid,
-            "posts",
-            `${uploadTime}-${index}`
-          ),
-          {
-            userId: currentUser.uid,
-            type: mediaType,
-            mediaUrl,
-            caption: profilePostCaption.trim(),
-            state: profile?.state || "",
-            createdAt: serverTimestamp(),
-          }
-        )
+        await publishProfileCommunityPost({user:currentUser, profile,
+          id:`${uploadTime}-${index}`, type:mediaType, mediaUrl,
+          caption:profilePostCaption.trim(),
+        })
       })
     )
 
@@ -1060,7 +1058,7 @@ const handleToggleSavePost = async () => {
     setProfilePostCaption("")
     setShowProfileComposer(false)
 
-    alert(`${uploadedCount} files posted!`)
+    alert(`${uploadedCount} files posted to your profile and ${community.state} community!`)
   } catch (error) {
     console.error("Failed to post profile media:", error)
     alert(error instanceof Error ? `Upload failed: ${error.message}` : "Your files could not be uploaded.")
@@ -1491,6 +1489,20 @@ const spotlightVideo = [...profilePosts]
   .filter((post) => post.type === 'video' && post.mediaUrl)
   .sort((a, b) => (b.createdAt?.toMillis?.() || Number(b.id?.split('-')[0]) || 0) - (a.createdAt?.toMillis?.() || Number(a.id?.split('-')[0]) || 0))[0]
 const isOwnProfile = Boolean(user && user.uid === profileUserId)
+async function deleteProfilePost(postId: string) {
+  if (!isOwnProfile || deletingProfilePost || !postId) return
+  if (!window.confirm('Delete this post from your profile and state community?')) return
+  setDeletingProfilePost(true)
+  try {
+    await deleteContent({kind: 'profile', id: postId})
+    setProfilePosts((posts) => posts.filter((post) => post.id !== postId))
+    setSelectedPost((post: any) => post?.id === postId ? null : post)
+  } catch (error) {
+    window.alert(error instanceof Error ? error.message : 'Could not delete post.')
+  } finally {
+    setDeletingProfilePost(false)
+  }
+}
 const canViewPrivateProfile =
   !isPrivateProfile || isOwnProfile || isFollowing
 const careerSports = Array.from(
@@ -1762,6 +1774,13 @@ async function handleProfileMusicUpload(
   return ( 
 
     <div className="min-h-screen bg-black text-white">
+      {isOwnProfile && (
+        <div className="mx-auto flex w-full max-w-7xl justify-end px-5 pt-4">
+          <Link href="/settings/delete-account" className="inline-flex min-h-11 items-center rounded-xl border border-red-500/60 px-5 py-3 font-bold text-red-400 hover:bg-red-500/10">
+            Delete Profile
+          </Link>
+        </div>
+      )}
     {showProfileComposer && isOwnProfile && (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4" role="dialog" aria-modal="true" aria-label="Create media post">
       <div id="profile-post-composer" className="max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-xl border border-white/20 bg-zinc-950 p-6 text-white">
@@ -1905,9 +1924,7 @@ async function handleProfileMusicUpload(
               Message
             </button>
 
-            <button className="rounded-xl border border-white/20 bg-white/5 px-5 py-2 font-bold text-white hover:bg-white/10">
-              Share Profile
-            </button>
+            <ShareButton title={`${profile?.displayName || 'Athlete'} — My High School Sports Family`} subject="profile" />
           </div>
         </div>
       </div>
@@ -1916,7 +1933,7 @@ async function handleProfileMusicUpload(
       <div className="grid grid-cols-3 gap-8 rounded-2xl border border-white/10 bg-white/[0.03] px-8 py-5">
 
         <div className="text-center">
-          <div className="text-2xl font-black">0</div>
+          <div className="text-2xl font-black">{postsCount}</div>
           <div className="text-xs font-bold uppercase text-zinc-500">
             Posts
           </div>
@@ -2026,6 +2043,8 @@ async function handleProfileMusicUpload(
 
 {activeProfileTab === "Home" && (
   <main className="mx-auto w-full max-w-7xl px-5 py-8">
+    <BroadcastButtons athleteId={profileUserId} />
+    <LiveFeed athleteId={profileUserId} inline heading="Your Live & Scheduled Streams" />
 
     {/* WELCOME / ATHLETE OVERVIEW */}
     <section className="overflow-hidden rounded-3xl border border-white/10 bg-zinc-950">
@@ -2049,100 +2068,26 @@ async function handleProfileMusicUpload(
           </div>
 
           <div className="flex flex-wrap gap-3">
-            <button className="rounded-xl bg-red-600 px-5 py-3 font-bold hover:bg-red-500">
-              + Add Post
-            </button>
+           <button
+  type="button"
+  onClick={() => {
+    setProfilePostType('photo')
+    setProfilePostFiles([])
+    setProfilePostCaption('')
+    setShowProfileComposer(true)
+  }}
+  className="rounded-xl bg-red-600 px-5 py-3 font-bold hover:bg-red-500"
+>
+  + Add Post
+</button>
 
-            <button
-              onClick={() => setEditing(true)}
+            {user?.uid === profileUserId && <button
+              onClick={() => { setActiveProfileTab("About"); setEditing(true); }}
               className="rounded-xl border border-white/10 bg-white/5 px-5 py-3 font-bold hover:bg-white/10"
             >
               Edit Profile
-            </button>
-            {editing && (
-  <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/70 p-4 sm:items-center">
-    <form
-      onSubmit={saveProfile}
-      className="my-4 max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-zinc-900 p-6 text-white"
-    >
-      <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-bold">Edit Profile</h2>
+            </button>}
 
-        <button
-          type="button"
-          onClick={() => setEditing(false)}
-          className="text-2xl text-zinc-400 hover:text-white"
-        >
-          ×
-        </button>
-      </div>
-
-      <div className="space-y-4">
-        <div>
-          <label className="mb-2 block font-semibold">
-            PlayStation Gamertag
-          </label>
-
-          <input
-            type="text"
-            value={form.playstationGamertag || ""}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                playstationGamertag: e.target.value,
-              })
-            }
-            placeholder="Enter PlayStation Gamertag"
-            className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-blue-500"
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block font-semibold">
-            Xbox Gamertag
-          </label>
-
-          <input
-            type="text"
-            value={form.xboxGamertag || ""}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                xboxGamertag: e.target.value,
-              })
-            }
-            placeholder="Enter Xbox Gamertag"
-            className="w-full rounded-xl border border-white/10 bg-black px-4 py-3 text-white outline-none focus:border-green-500"
-          />
-        </div>
-      </div>
-
-      {error && (
-        <p className="mt-4 rounded-lg bg-red-500/10 p-3 text-red-400">
-          {error}
-        </p>
-      )}
-
-      <div className="mt-6 flex gap-3">
-        <button
-          type="button"
-          onClick={() => setEditing(false)}
-          className="flex-1 rounded-xl border border-white/20 px-5 py-3 font-bold"
-        >
-          Cancel
-        </button>
-
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex-1 rounded-xl bg-red-600 px-5 py-3 font-bold hover:bg-red-500 disabled:opacity-50"
-        >
-          {saving ? "Saving..." : "Save Profile"}
-        </button>
-      </div>
-    </form>
-  </div>
-)}
           </div>
 
         </div>
@@ -3913,11 +3858,11 @@ async function handleProfileMusicUpload(
   ) : (
     <div className="grid grid-cols-3 gap-1 md:gap-2">
       {profilePosts.map((post) => (
+        <div key={post.id} className="min-w-0">
         <button
-  key={post.id}
   type="button"
   onClick={() => setSelectedPost(post)}
-  className="relative aspect-square overflow-hidden bg-black rounded-md"
+  className="relative block w-full aspect-square overflow-hidden bg-black rounded-md"
 >
           {post.type === "video" ? (
             <video
@@ -3934,6 +3879,13 @@ async function handleProfileMusicUpload(
             />
           )}
         </button>
+        {isOwnProfile && (
+          <button type="button" disabled={deletingProfilePost} onClick={() => deleteProfilePost(post.id)}
+            className="mt-1 min-h-11 w-full rounded-lg border border-red-500/60 px-2 py-2 text-sm font-bold text-red-400 hover:bg-red-500/10 disabled:opacity-50">
+            {deletingProfilePost ? 'Deleting…' : 'Delete post'}
+          </button>
+        )}
+        </div>
       ))}
     </div>
   )}
@@ -3971,6 +3923,7 @@ async function handleProfileMusicUpload(
 
         <div className="p-5">
           <h3 className="text-lg font-bold mb-3">Post</h3>
+          {user && user.uid === profileUserId && <button type="button" disabled={deletingProfilePost} className="mb-4 min-h-11 rounded-lg border border-red-600 px-4 py-2 font-bold text-red-600 disabled:opacity-50" onClick={() => deleteProfilePost(selectedPost.id)}>{deletingProfilePost ? 'Deleting…' : 'Delete post'}</button>}
 
           {selectedPost.caption ? (
             <p className="text-sm">{selectedPost.caption}</p>
@@ -4175,25 +4128,7 @@ async function handleProfileMusicUpload(
         Stream games, practices, and highlights.
       </p>
 
-      <button
-        onClick={() => {
-  if (!profile?.stateId || !profile?.state) {
-    router.push("/states")
-    return
-  }
-
-  router.push({
-    pathname: "/live",
-    query: {
-      state: profile.state,
-      stateId: profile.stateId,
-    },
-  })
-}}
-        className="mt-4 w-full rounded-lg bg-black px-4 py-2 text-white"
-      >
-        Go Live
-      </button>
+      <BroadcastButtons athleteId={profileUserId} />
     </div>
 
   

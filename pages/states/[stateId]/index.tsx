@@ -1,3 +1,5 @@
+import { BroadcastButtons } from '../../../components/broadcast/BroadcastProvider';
+import LiveFeed from '../../../components/broadcast/LiveFeed';
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/router'
@@ -364,6 +366,8 @@ async function handlePostVideo() {
     <p className="mt-2 text-slate-400">
       Live games, practices, interviews, and streams from {stateName}.
     </p>
+    <BroadcastButtons />
+    <LiveFeed stateId={stateId} state={stateName} inline />
   </section>
 )}
 
@@ -375,6 +379,8 @@ async function handlePostVideo() {
     </p>
   </section>
 )}
+<LiveFeed stateId={stateId} state={stateName} section="week" inline />
+<LiveFeed stateId={stateId} state={stateName} section="trending" inline />
 <TrendingAthletes
   stateName={stateName}
   athletes={athletes}
